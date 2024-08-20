@@ -5,16 +5,97 @@ local socket = require("socket")
 local tcp = assert(socket.tcp())
 
 -- TODOs
--- DALI Fade Time - Working
 -- DMX Message - Needs Testing
 -- DMX Colour - Do we do this, or just do 3/4 times DMX Message
--- DALI RGB, RBGW Colour - Simple Functions
 -- DALI DT8 CCT - Working, test with light
 -- DALI DT8 Colour - Working, test with light
 -- Start List Message
--- Colour Conversion from RGB to XY
 
 --ENUMs
+-- DALI Addressing
+DALI_0 = 0
+DALI_1 = 1
+DALI_2 = 2
+DALI_3 = 3
+DALI_4 = 4
+DALI_5 = 5
+DALI_6 = 6
+DALI_7 = 7
+DALI_8 = 8
+DALI_9 = 9
+DALI_10 = 10
+DALI_11 = 11
+DALI_12 = 12
+DALI_13 = 13
+DALI_14 = 14
+DALI_15 = 15
+DALI_16 = 16
+DALI_17 = 17
+DALI_18 = 18
+DALI_19 = 19
+DALI_20 = 20
+DALI_21 = 21
+DALI_22 = 22
+DALI_23 = 23
+DALI_24 = 24
+DALI_25 = 25
+DALI_26 = 26
+DALI_27 = 27
+DALI_28 = 28
+DALI_29 = 29
+DALI_30 = 30
+DALI_31 = 31
+DALI_32 = 32
+DALI_33 = 33
+DALI_34 = 34
+DALI_35 = 35
+DALI_36 = 36
+DALI_37 = 37
+DALI_38 = 38
+DALI_39 = 39
+DALI_40 = 40
+DALI_41 = 41
+DALI_42 = 42
+DALI_43 = 43
+DALI_44 = 44
+DALI_45 = 45
+DALI_46 = 46
+DALI_47 = 47
+DALI_48 = 48
+DALI_49 = 49
+DALI_50 = 50
+DALI_51 = 51
+DALI_52 = 52
+DALI_53 = 53
+DALI_54 = 54
+DALI_55 = 55
+DALI_56 = 56
+DALI_57 = 57
+DALI_58 = 58
+DALI_59 = 59
+DALI_60 = 60
+DALI_61 = 61
+DALI_62 = 62
+DALI_63 = 63
+DALI_G0 = 64
+DALI_G1 = 65
+DALI_G2 = 66
+DALI_G3 = 67
+DALI_G4 = 68
+DALI_G5 = 69
+DALI_G6 = 70
+DALI_G7 = 71
+DALI_G8 = 72
+DALI_G9 = 73
+DALI_G10 = 74
+DALI_G11 = 75
+DALI_G12 = 76
+DALI_G13 = 77
+DALI_G14 = 78
+DALI_G15 = 79
+DALI_BROADCAST = 80
+
+-- Type 8
 SET_TEMP_X_COORD = 0
 SET_TEMP_Y_COORD = 1
 ACTIVATE = 2
@@ -261,21 +342,39 @@ function createDMXMessage(line, channel, level, fadetime, rpt)
         rpt = 1 -- For consistency, make rpt = 1
     end
     if (fadetime == 0) then
-        fadetime = 1 -- Minimum Fadetime of 10ms
+        fadetime = 1 -- Minimum Fadetime of 10ms, also for consistency
     end
 
-    if (level <= 0x7F) then
-        msg = "\xCD\x00\x0E\xA2\x01\x0B\x10\x01\x18\x01\x20\x01\x2A\x01\x00\x30\x01"
-        msg = replace_char(17, msg, fadetime)
+    offset = 0
+    msg = "\xCD\x00\x0E\xA2\x01\x0B\x10\x01\x18\x01\x20\x01\x2A\x01\x00\x30\x01" -- Smallest Message Variant
+    if (channel > 0x80) then
+        msg = replace_char(10, msg, bit.band(channel, 0x7F) + 0x80)
+        msg = insert_char(10, msg, bit.band(bit.rshift(channel, 7), 0x7F))
+        offset = offset + 1
     else
-        msg = "\xCD\x00\x0F\xA2\x01\x0C\x10\x01\x18\x01\x20\x01\x2A\x02x\ff\x01\x30\x01"
-        msg = replace_char(18, msg, fadetime)
+        msg = replace_char(10, msg, channel)
     end
-    msg = replace_char(10, msg, channel) -- Channel
-    msg = replace_char(15, msg, level) -- Level
-    msg = replace_char(8, msg, line) -- Line
 
-    -- TODO, channel over 127, fade time over 127
+    if (level > 0x80) then
+        msg = replace_char(15 + offset, msg, bit.band(level, 0x7F) + 0x80)
+        msg = insert_char(15 + offset, msg, bit.band(bit.rshift(level, 7), 0x7F))
+        offset = offset + 1
+    else
+        msg = replace_char(15 + offset, msg, level)
+    end
+
+    -- Fade Time
+    msg = replace_char(17 + offset, msg, fadetime)
+
+    -- Line
+    msg = replace_char(8, msg, line)
+
+    -- Replace Data Length
+    msg = replace_char(6, msg, 0x0B + offset)
+    -- Replace Full Length
+    msg = replace_char(3, msg, 0x0E + offset)
+
+    -- TODO Repeat
     return msg
 end
 
@@ -383,7 +482,13 @@ function sendDT8Cmd(line, address, cmd, arg)
     tcp:send(msg)
 end
 
-function sendDMXLevel(line, channel, level, rpt)
+function sendDMXLevel(line, channel, level, fadetime, rpt)
+    -- Connect to Host
+    tcp:connect(host, port)
+    -- Get Message
+    msg = createDMXMessage(line, channel, level, fadetime, rpt)
+    -- Send Message
+    tcp:send(msg)
 end
 
 function sendDMXRGBW(line, channel, red, green, blue, white, rpt)
@@ -483,24 +588,3 @@ function RGBToXY(R, G, B)
 
     return x, y
 end
-
--- Example Usage
-
--- Get Level
---value1 = GetLightingLevel(0)
---if (value1 == 255) then
--- 	value1 = 254-
---end
-
---sendDALIArcLevel(1, 0, value1)
-
--- DEBUG Log event
---log("Data Sent " .. msg)
-
--- Get Receive
---while true do
---  local s, status, partial = tcp:receive()
---  log(s or partial)
---  if status == "closed" then break end
---end
--- tcp:close()
