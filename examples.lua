@@ -1,4 +1,5 @@
 require("user.eDIDIOCore")
+require("user.eDIDIOConfig")
 
 -- Example Usage
 
@@ -8,12 +9,14 @@ if (value1 == 255) then
   	value1 = 254
 end
 
---sendDALIFadeMessage(1, 80, 3)
---sendDALIArcLevel(1, 0, value1)
---sendDALIArcLevel(1, 2, value1)
---sendDALIArcLevel(1, 64, value1)
---sendDALIArcLevel(1, 80, value1)
-sendDMXLevel(2, 1, 20, 100, 2)
+local eDIDIOS10_1 = EDIDIO.new(eDIDIOS10_1)
+
+--eDIDIOS10_1sendDALIFadeMessage(1, 80, 3)
+eDIDIOS10_1:sendDALIArcLevel(LINE_1, DALI_0, value1)
+--eDIDIOS10_1sendDALIArcLevel(1, 2, value1)
+--eDIDIOS10_1sendDALIArcLevel(1, 64, value1)
+--eDIDIOS10_1sendDALIArcLevel(1, 80, value1)
+--eDIDIOS10_1sendDALICCTMessage(1, 1, 2000, 254)
 
 
 
