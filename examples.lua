@@ -11,13 +11,20 @@ end
 
 local eDIDIOS10_1 = EDIDIO.new(eDIDIOS10_1)
 
---eDIDIOS10_1sendDALIFadeMessage(1, 80, 3)
-eDIDIOS10_1:sendDALIArcLevel(LINE_1, DALI_0, value1)
---eDIDIOS10_1sendDALIArcLevel(1, 2, value1)
---eDIDIOS10_1sendDALIArcLevel(1, 64, value1)
---eDIDIOS10_1sendDALIArcLevel(1, 80, value1)
---eDIDIOS10_1sendDALICCTMessage(1, 1, 2000, 254)
 
+local flag = eDIDIOS10_1:sendDALIArcLevel(LINE_1, DALI_0, value1)
+--
+
+--local flag, level = eDIDIOS10_1:getDALILevel(LINE_1, DALI_0)
+
+log(flag)
+
+local eDIDIOS10_2 = EDIDIO.new(eDIDIOS10_2)
+-- WHYYYY, likely CCT not working either
+--eDIDIOS10_2:sendDALIRGBDT8Message(LINE_1, DALI_0, 127, 100, 50, 100)
+--eDIDIOS10_2:sendDALICCTDT8Message(LINE_1, DALI_0, 3000, 254)
+--eDIDIOS10_2:sendDMXRGBW(LINE_2, 1, 0, 10, 20, 30, 100, 2)
+--eDIDIOS10_2:sendTrigger(LINE_1, 0, DALI_ARC_OVERRIDE, DALI_1, 200, 0)
 
 
 -- DEBUG Log event

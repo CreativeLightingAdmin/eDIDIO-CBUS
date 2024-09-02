@@ -4,9 +4,9 @@ local function encode_varint(value)
     local bytes = {}
     repeat
         local byte = bit.band(value, 0x7F)
-    		value = bit.rshift(value, 7)
+        value = bit.rshift(value, 7)
         if value ~= 0 then
-      			byte = bit.bor(byte, 0x80)
+            byte = bit.bor(byte, 0x80)
         end
         table.insert(bytes, string.char(byte))
     until value == 0
@@ -32,7 +32,7 @@ local function encode_repeated_uint32(field_number, values)
     local encoded = ""
     if values then
         for _, value in ipairs(values) do
-      			log(value)
+            log(value)
             encoded = encoded .. encode_uint32(field_number, value)
         end
     end
@@ -45,27 +45,44 @@ local function encode_ack_message(ack_message)
 
     -- Encode ack_id
     if ack_message.ack_id then
-        table.insert(encoded_message, string.char(0x08))  -- field number 1, wire type 0 (varint)
+        table.insert(encoded_message, string.char(0x08)) -- field number 1, wire type 0 (varint)
         table.insert(encoded_message, encode_varint(ack_message.ack_id))
     end
 
     return table.concat(encoded_message)
 end
 
-local function encode_dtr_payload_message(dtr_payload)
-    return encode_repeated_uint32(10, dtr_payload)
+local function encode_dtr_payload_message(dtr_values)
+    -- It should be 0x52, length Right, 0x0A, length Dtr, dtr
+    local dtr_data = ""
+    for _, value in ipairs(dtr_values) do
+        -- Each DTR value can be up to 3 bytes depending on the DALI version
+
+        dtr_data = dtr_data .. encode_varint(value)
+    end
+
+    -- Calculate the length of the dtr_data
+    local lengthDtr = #dtr_data
+    --print("Encoded length:", lengthDtr)  -- Should print `3` for this example
+
+    -- Encode the length as a varint
+    local length_encoded = encode_varint(lengthDtr)
+
+    -- Return the length-prefixed data
+    return encode_varint(0x52) ..
+        encode_varint(lengthDtr + 2) .. encode_varint(0x0A) .. encode_varint(lengthDtr) .. dtr_data
 end
 
--- Function to encode DALIMessage 
+-- Function to encode DALIMessage
 local function encode_dali_message(dali_message)
     local encoded_message = ""
 
     -- Encode line_mask
     encoded_message = encoded_message .. encode_uint32(1, dali_message.line_mask)
-    
+
     -- Encode address
     encoded_message = encoded_message .. encode_uint32(2, dali_message.address)
-    
+
     -- Encode the action oneof field
     if dali_message.action.frame_25_bit then
         encoded_message = encoded_message .. encode_uint32(3, dali_message.action.frame_25_bit)
@@ -92,20 +109,20 @@ local function encode_dali_message(dali_message)
     elseif dali_message.action.device24_setting then
         encoded_message = encoded_message .. encode_uint32(16, dali_message.action.device24_setting)
     end
-    
+
     -- Encode the params oneof field
     if dali_message.params.arg then
         encoded_message = encoded_message .. encode_uint32(9, dali_message.params.arg)
     elseif dali_message.params.dtr then
         encoded_message = encoded_message .. encode_dtr_payload_message(dali_message.params.dtr)
     end
-    
+
     -- Encode instance_type
     encoded_message = encoded_message .. encode_uint32(17, dali_message.instance_type)
-    
+
     -- Encode op_code
     encoded_message = encoded_message .. encode_uint32(18, dali_message.op_code)
-    
+
     return encoded_message
 end
 
@@ -142,7 +159,6 @@ function encode_dali_query_response(response)
     return table.concat(result)
 end
 
-
 -- Function to encode DMXMessage
 local function encode_dmx_message(dmx_message)
     local encoded_message = ""
@@ -160,32 +176,32 @@ local function encode_trigger_message(trigger_message)
     local encoded_message = {}
 
     if trigger_message.type then
-        table.insert(encoded_message, string.char(0x08))  -- field number 1, wire type 0
+        table.insert(encoded_message, string.char(0x08)) -- field number 1, wire type 0
         table.insert(encoded_message, encode_varint(trigger_message.type))
     end
 
     if trigger_message.zone then
-        table.insert(encoded_message, string.char(0x10))  -- field number 2, wire type 0
+        table.insert(encoded_message, string.char(0x10)) -- field number 2, wire type 0
         table.insert(encoded_message, encode_varint(trigger_message.zone))
     end
 
     if trigger_message.line_mask then
-        table.insert(encoded_message, string.char(0x18))  -- field number 3, wire type 0
+        table.insert(encoded_message, string.char(0x18)) -- field number 3, wire type 0
         table.insert(encoded_message, encode_varint(trigger_message.line_mask))
     end
 
     if trigger_message.target_index then
-        table.insert(encoded_message, string.char(0x20))  -- field number 4, wire type 0
+        table.insert(encoded_message, string.char(0x20)) -- field number 4, wire type 0
         table.insert(encoded_message, encode_varint(trigger_message.target_index))
     end
 
     if trigger_message.value then
-        table.insert(encoded_message, string.char(0x28))  -- field number 5, wire type 0
+        table.insert(encoded_message, string.char(0x28)) -- field number 5, wire type 0
         table.insert(encoded_message, encode_varint(trigger_message.value))
     end
 
     if trigger_message.query_index then
-        table.insert(encoded_message, string.char(0x30))  -- field number 6, wire type 0
+        table.insert(encoded_message, string.char(0x30)) -- field number 6, wire type 0
         table.insert(encoded_message, encode_varint(trigger_message.query_index))
     end
 
@@ -197,7 +213,7 @@ local function encode_external_trigger_message(external_trigger_message)
     local encoded_message = {}
 
     if external_trigger_message.trigger then
-        table.insert(encoded_message, string.char(0x0A))  -- field number 1, wire type 2 (length-delimited)
+        table.insert(encoded_message, string.char(0x0A)) -- field number 1, wire type 2 (length-delimited)
         local encoded_trigger = encode_trigger_message(external_trigger_message.trigger)
         table.insert(encoded_message, encode_length_delimited(encoded_trigger))
     end
@@ -211,35 +227,31 @@ function Encode_edidio_message(edidio_message)
 
     -- Encode message_id
     if edidio_message.message_id then
-        table.insert(encoded_message, string.char(0x08))  -- field number 1, wire type 0 (varint)
+        table.insert(encoded_message, string.char(0x08)) -- field number 1, wire type 0 (varint)
         table.insert(encoded_message, encode_varint(edidio_message.message_id))
     end
 
     -- Encode the payload based on its type
     if edidio_message.payload then
         if edidio_message.payload.ack then
-            table.insert(encoded_message, string.char(0x12))  -- field number 2, wire type 2 (length-delimited)
+            table.insert(encoded_message, string.char(0x12)) -- field number 2, wire type 2 (length-delimited)
             -- Encode AckMessage (assuming an encode_ack_message function exists)
             local encoded_ack = encode_ack_message(edidio_message.payload.ack)
             table.insert(encoded_message, encode_length_delimited(encoded_ack))
-        
         elseif edidio_message.payload.dali_message then
-            table.insert(encoded_message, string.char(0x92, 0x01))  -- field number 18, wire type 2 (length-delimited)
+            table.insert(encoded_message, string.char(0x92, 0x01)) -- field number 18, wire type 2 (length-delimited)
             local encoded_dali = encode_dali_message(edidio_message.payload.dali_message)
             table.insert(encoded_message, encode_length_delimited(encoded_dali))
-              
         elseif edidio_message.payload.dali_query_respose then
-            table.insert(encoded_message, string.char(0xB2, 0x01))  -- field number 19, wire type 2 (length-delimited)
+            table.insert(encoded_message, string.char(0xB2, 0x01)) -- field number 19, wire type 2 (length-delimited)
             local encoded_dali = encode_dali_query_response(edidio_message.payload.dali_query_response)
             table.insert(encoded_message, encode_length_delimited(encoded_dali))
-      
         elseif edidio_message.payload.dmx_message then
-            table.insert(encoded_message, string.char(0xA2, 0x01))  -- field number 20, wire type 2 (length-delimited)
+            table.insert(encoded_message, string.char(0xA2, 0x01)) -- field number 20, wire type 2 (length-delimited)
             local encoded_dmx = encode_dmx_message(edidio_message.payload.dmx_message)
             table.insert(encoded_message, encode_length_delimited(encoded_dmx))
-
         elseif edidio_message.payload.external_trigger then
-            table.insert(encoded_message, string.char(0xAA, 0x01))  -- field number 21, wire type 2 (length-delimited)
+            table.insert(encoded_message, string.char(0xAA, 0x01)) -- field number 21, wire type 2 (length-delimited)
             local encoded_trigger = encode_external_trigger_message(edidio_message.payload.external_trigger)
             table.insert(encoded_message, encode_length_delimited(encoded_trigger))
         end
@@ -247,7 +259,6 @@ function Encode_edidio_message(edidio_message)
 
     return table.concat(encoded_message)
 end
-
 
 function Wrap_message(encoded_message)
     -- Start byte
@@ -269,8 +280,6 @@ function Wrap_message(encoded_message)
 
     return wrapped_message
 end
-
-
 
 -- DECODER FUNCTIONS
 -- Function to decode a varint
@@ -311,13 +320,13 @@ local function decode_ack_message(data)
         local field_number, wire_type, new_pos = decode_field_key(data, pos)
         pos = new_pos
 
-        if field_number == 1 and wire_type == 0 then  -- ack_id (uint32)
+        if field_number == 1 and wire_type == 0 then -- ack_id (uint32)
             ack_message.ack_id, pos = varint_decode(data, pos)
         else
             -- Skip unknown fields
-            if wire_type == 0 then  -- varint
+            if wire_type == 0 then -- varint
                 _, pos = varint_decode(data, pos)
-            elseif wire_type == 2 then  -- length-delimited
+            elseif wire_type == 2 then -- length-delimited
                 local length
                 length, pos = varint_decode(data, pos)
                 pos = pos + length
@@ -339,65 +348,65 @@ local function decode_dali_message(data)
         local field_number, wire_type, new_pos = decode_field_key(data, pos)
         pos = new_pos
 
-        if field_number == 1 and wire_type == 0 then  -- line_mask (uint32)
+        if field_number == 1 and wire_type == 0 then -- line_mask (uint32)
             dali_message.line_mask, pos = varint_decode(data, pos)
-        elseif field_number == 2 and wire_type == 0 then  -- address (uint32)
+        elseif field_number == 2 and wire_type == 0 then -- address (uint32)
             dali_message.address, pos = varint_decode(data, pos)
-        elseif field_number == 3 and wire_type == 0 then  -- frame_25_bit (uint32)
+        elseif field_number == 3 and wire_type == 0 then -- frame_25_bit (uint32)
             dali_message.action = dali_message.action or {}
             dali_message.action.frame_25_bit, pos = varint_decode(data, pos)
-        elseif field_number == 4 and wire_type == 0 then  -- frame_25_bit_reply (uint32)
+        elseif field_number == 4 and wire_type == 0 then -- frame_25_bit_reply (uint32)
             dali_message.action = dali_message.action or {}
             dali_message.action.frame_25_bit_reply, pos = varint_decode(data, pos)
-        elseif field_number == 5 and wire_type == 0 then  -- command (DALICommandType)
+        elseif field_number == 5 and wire_type == 0 then -- command (DALICommandType)
             dali_message.action = dali_message.action or {}
             dali_message.action.command, pos = varint_decode(data, pos)
-        elseif field_number == 6 and wire_type == 0 then  -- custom_command (CustomDALICommandType)
+        elseif field_number == 6 and wire_type == 0 then -- custom_command (CustomDALICommandType)
             dali_message.action = dali_message.action or {}
             dali_message.action.custom_command, pos = varint_decode(data, pos)
-        elseif field_number == 7 and wire_type == 0 then  -- query (DALIQueryType)
+        elseif field_number == 7 and wire_type == 0 then -- query (DALIQueryType)
             dali_message.action = dali_message.action or {}
             dali_message.action.query, pos = varint_decode(data, pos)
-        elseif field_number == 8 and wire_type == 0 then  -- type8 (Type8CommandType)
+        elseif field_number == 8 and wire_type == 0 then -- type8 (Type8CommandType)
             dali_message.action = dali_message.action or {}
             dali_message.action.type8, pos = varint_decode(data, pos)
-        elseif field_number == 11 and wire_type == 0 then  -- frame_16_bit (uint32)
+        elseif field_number == 11 and wire_type == 0 then -- frame_16_bit (uint32)
             dali_message.action = dali_message.action or {}
             dali_message.action.frame_16_bit, pos = varint_decode(data, pos)
-        elseif field_number == 12 and wire_type == 0 then  -- frame_16_bit_reply (uint32)
+        elseif field_number == 12 and wire_type == 0 then -- frame_16_bit_reply (uint32)
             dali_message.action = dali_message.action or {}
             dali_message.action.frame_16_bit_reply, pos = varint_decode(data, pos)
-        elseif field_number == 13 and wire_type == 0 then  -- frame_24_bit (uint32)
+        elseif field_number == 13 and wire_type == 0 then -- frame_24_bit (uint32)
             dali_message.action = dali_message.action or {}
             dali_message.action.frame_24_bit, pos = varint_decode(data, pos)
-        elseif field_number == 14 and wire_type == 0 then  -- frame_24_bit_reply (uint32)
+        elseif field_number == 14 and wire_type == 0 then -- frame_24_bit_reply (uint32)
             dali_message.action = dali_message.action or {}
             dali_message.action.frame_24_bit_reply, pos = varint_decode(data, pos)
-        elseif field_number == 15 and wire_type == 0 then  -- type8_reply (Type8QueryType)
+        elseif field_number == 15 and wire_type == 0 then -- type8_reply (Type8QueryType)
             dali_message.action = dali_message.action or {}
             dali_message.action.type8_reply, pos = varint_decode(data, pos)
-        elseif field_number == 16 and wire_type == 0 then  -- device24_setting (DALI24DeviceSetting)
+        elseif field_number == 16 and wire_type == 0 then -- device24_setting (DALI24DeviceSetting)
             dali_message.action = dali_message.action or {}
             dali_message.action.device24_setting, pos = varint_decode(data, pos)
-        elseif field_number == 9 and wire_type == 0 then  -- arg (uint32)
+        elseif field_number == 9 and wire_type == 0 then -- arg (uint32)
             dali_message.params = dali_message.params or {}
             dali_message.params.arg, pos = varint_decode(data, pos)
-        elseif field_number == 10 and wire_type == 2 then  -- dtr (DTRPayloadMessage)
+        elseif field_number == 10 and wire_type == 2 then -- dtr (DTRPayloadMessage)
             dali_message.params = dali_message.params or {}
             dali_message.params.dtr_value = dali_message.params.dtr_value or {}
             local dtr_value
             dtr_value, index = decode_uint32(encoded_message, index)
             table.insert(dali_message.params.dtr_value, dtr_value)
             table.insert(dali_message.dtr, dtr_value)
-        elseif field_number == 17 and wire_type == 0 then  -- instance_type (DALI24InstanceType)
+        elseif field_number == 17 and wire_type == 0 then -- instance_type (DALI24InstanceType)
             dali_message.instance_type, pos = varint_decode(data, pos)
-        elseif field_number == 18 and wire_type == 0 then  -- op_code (DALI24OpCode)
+        elseif field_number == 18 and wire_type == 0 then -- op_code (DALI24OpCode)
             dali_message.op_code, pos = varint_decode(data, pos)
         else
             -- Skip unknown fields
-            if wire_type == 0 then  -- varint
+            if wire_type == 0 then -- varint
                 _, pos = varint_decode(data, pos)
-            elseif wire_type == 2 then  -- length-delimited
+            elseif wire_type == 2 then -- length-delimited
                 local length
                 length, pos = varint_decode(data, pos)
                 pos = pos + length
@@ -529,15 +538,15 @@ local function decode_dmx_message(data)
         local field_number, wire_type, new_pos = decode_field_key(data, pos)
         pos = new_pos
 
-        if field_number == 1 and wire_type == 0 then  -- zone (uint32)
+        if field_number == 1 and wire_type == 0 then -- zone (uint32)
             dmx_message.zone, pos = varint_decode(data, pos)
-        elseif field_number == 2 and wire_type == 0 then  -- universe_mask (uint32)
+        elseif field_number == 2 and wire_type == 0 then -- universe_mask (uint32)
             dmx_message.universe_mask, pos = varint_decode(data, pos)
-        elseif field_number == 3 and wire_type == 0 then  -- channel (uint32)
+        elseif field_number == 3 and wire_type == 0 then -- channel (uint32)
             dmx_message.channel, pos = varint_decode(data, pos)
-        elseif field_number == 4 and wire_type == 0 then  -- repeat (uint32)
+        elseif field_number == 4 and wire_type == 0 then -- repeat (uint32)
             dmx_message.repeat_count, pos = varint_decode(data, pos)
-        elseif field_number == 5 and wire_type == 2 then  -- level (repeated uint32)
+        elseif field_number == 5 and wire_type == 2 then -- level (repeated uint32)
             local length
             length, pos = varint_decode(data, pos)
             local levels = {}
@@ -548,13 +557,13 @@ local function decode_dmx_message(data)
                 table.insert(levels, level)
             end
             dmx_message.levels = levels
-        elseif field_number == 6 and wire_type == 0 then  -- fade_time_by_10ms (uint32)
+        elseif field_number == 6 and wire_type == 0 then -- fade_time_by_10ms (uint32)
             dmx_message.fade_time_by_10ms, pos = varint_decode(data, pos)
         else
             -- Skip unknown fields
-            if wire_type == 0 then  -- varint
+            if wire_type == 0 then -- varint
                 _, pos = varint_decode(data, pos)
-            elseif wire_type == 2 then  -- length-delimited
+            elseif wire_type == 2 then -- length-delimited
                 local length
                 length, pos = varint_decode(data, pos)
                 pos = pos + length
@@ -576,23 +585,23 @@ local function decode_trigger_message(data)
         local field_number, wire_type, new_pos = decode_field_key(data, pos)
         pos = new_pos
 
-        if field_number == 1 and wire_type == 0 then  -- TriggerType (uint32)
+        if field_number == 1 and wire_type == 0 then -- TriggerType (uint32)
             trigger_message.type, pos = varint_decode(data, pos)
-        elseif field_number == 2 and wire_type == 0 then  -- zone (uint32)
+        elseif field_number == 2 and wire_type == 0 then -- zone (uint32)
             trigger_message.zone, pos = varint_decode(data, pos)
-        elseif field_number == 3 and wire_type == 0 then  -- line_mask (uint32)
+        elseif field_number == 3 and wire_type == 0 then -- line_mask (uint32)
             trigger_message.line_mask, pos = varint_decode(data, pos)
-        elseif field_number == 4 and wire_type == 0 then  -- target_index (uint32)
+        elseif field_number == 4 and wire_type == 0 then -- target_index (uint32)
             trigger_message.target_index, pos = varint_decode(data, pos)
-        elseif field_number == 5 and wire_type == 0 then  -- value (uint32)
+        elseif field_number == 5 and wire_type == 0 then -- value (uint32)
             trigger_message.value, pos = varint_decode(data, pos)
-        elseif field_number == 6 and wire_type == 0 then  -- query_index (uint32)
+        elseif field_number == 6 and wire_type == 0 then -- query_index (uint32)
             trigger_message.query_index, pos = varint_decode(data, pos)
         else
             -- Skip unknown fields
-            if wire_type == 0 then  -- varint
+            if wire_type == 0 then -- varint
                 _, pos = varint_decode(data, pos)
-            elseif wire_type == 2 then  -- length-delimited
+            elseif wire_type == 2 then -- length-delimited
                 local length
                 length, pos = varint_decode(data, pos)
                 pos = pos + length
@@ -614,15 +623,15 @@ local function decode_external_trigger_message(data)
         local field_number, wire_type, new_pos = decode_field_key(data, pos)
         pos = new_pos
 
-        if field_number == 1 and wire_type == 2 then  -- TriggerMessage (length-delimited)
+        if field_number == 1 and wire_type == 2 then -- TriggerMessage (length-delimited)
             local message_data
             message_data, pos = decode_length_delimited(data, pos)
             external_trigger_message.trigger = decode_trigger_message(message_data)
         else
             -- Skip unknown fields
-            if wire_type == 0 then  -- varint
+            if wire_type == 0 then -- varint
                 _, pos = varint_decode(data, pos)
-            elseif wire_type == 2 then  -- length-delimited
+            elseif wire_type == 2 then -- length-delimited
                 local length
                 length, pos = varint_decode(data, pos)
                 pos = pos + length
@@ -635,7 +644,6 @@ local function decode_external_trigger_message(data)
     return external_trigger_message
 end
 
-
 -- Function to decode EdidioMessage
 function Decode_edidio_message(data)
     local pos = 1
@@ -645,39 +653,33 @@ function Decode_edidio_message(data)
         local field_number, wire_type, new_pos = decode_field_key(data, pos)
         pos = new_pos
 
-        if field_number == 1 and wire_type == 0 then  -- message_id (uint32)
+        if field_number == 1 and wire_type == 0 then -- message_id (uint32)
             edidio_message.message_id, pos = varint_decode(data, pos)
-        
-        elseif field_number == 2 and wire_type == 2 then  -- AckMessage (length-delimited)
+        elseif field_number == 2 and wire_type == 2 then -- AckMessage (length-delimited)
             local message_data
             message_data, pos = decode_length_delimited(data, pos)
-            edidio_message.payload = { ack = decode_ack_message(message_data) }
-
-        elseif field_number == 18 and wire_type == 2 then  -- DALIMessage (length-delimited)
+            edidio_message.payload = {ack = decode_ack_message(message_data)}
+        elseif field_number == 18 and wire_type == 2 then -- DALIMessage (length-delimited)
             local message_data
             message_data, pos = decode_length_delimited(data, pos)
-            edidio_message.payload = { dali_message = decode_dali_message(message_data) }
-      
-        elseif field_number == 19 and wire_type == 2 then  -- DALIQuery (length-delimited)
+            edidio_message.payload = {dali_message = decode_dali_message(message_data)}
+        elseif field_number == 19 and wire_type == 2 then -- DALIQuery (length-delimited)
             local message_data
             message_data, pos = decode_length_delimited(data, pos)
-            edidio_message.payload = { dali_query = decode_dali_query_response(message_data) }
-        
-        elseif field_number == 20 and wire_type == 2 then  -- DMXMessage (length-delimited)
+            edidio_message.payload = {dali_query = decode_dali_query_response(message_data)}
+        elseif field_number == 20 and wire_type == 2 then -- DMXMessage (length-delimited)
             local message_data
             message_data, pos = decode_length_delimited(data, pos)
-            edidio_message.payload = { dmx_message = decode_dmx_message(message_data) }
-
-        elseif field_number == 21 and wire_type == 2 then  -- ExternalTriggerMessage (length-delimited)
+            edidio_message.payload = {dmx_message = decode_dmx_message(message_data)}
+        elseif field_number == 21 and wire_type == 2 then -- ExternalTriggerMessage (length-delimited)
             local message_data
             message_data, pos = decode_length_delimited(data, pos)
-            edidio_message.payload = { external_trigger = decode_external_trigger_message(message_data) }
-
+            edidio_message.payload = {external_trigger = decode_external_trigger_message(message_data)}
         else
             -- Skip unknown fields
-            if wire_type == 0 then  -- varint
+            if wire_type == 0 then -- varint
                 _, pos = varint_decode(data, pos)
-            elseif wire_type == 2 then  -- length-delimited
+            elseif wire_type == 2 then -- length-delimited
                 local length
                 length, pos = varint_decode(data, pos)
                 pos = pos + length
@@ -722,7 +724,6 @@ function Unwrap_message(wrapped_message)
     return encoded_message
 end
 
-
 -- TOOLS
 function PrintPairs(decoded_message)
     for k, v in pairs(decoded_message) do
@@ -763,7 +764,7 @@ function print_bytes(data)
 end
 
 function GetMessageID()
-    return (MessageId + 1);
+    return (MessageId + 1)
 end
 
 MessageId = 0
@@ -886,33 +887,108 @@ COLOUR_TEMP_COOLER = 8
 COLOUR_TEMP_WARMER = 9
 
 -- ACK
-DECODE_FAILED                  = 0  -- May indicate an issue with the protocol (e.g. a mismatch in expected fields between clients). Ensure both parties are using the latest version.
-INDEX_OUT_OF_BOUNDS            = 1  -- A resource was requested beyond the amount available.
-UNEXPECTED_TYPE                = 2  -- The provided message was not able to be handled or processed (likely due to a lack of enough information or incorrect values).
-ENCODE_FAILED                  = 3  -- Not currently in use.
-KEY_MISMATCH                   = 4  -- Not currently in use.
-SUCCESS                        = 5  -- The message was decoded and handled successfully.
-INVALID_PARAMS                 = 6  -- The message was decoded but had invalid data for the intended outcome.
-UNEXPECTED_COMMAND             = 7  -- The message was decoded but the requested action was not valid for current the state of the device.
-COMMUNICATION_FAILED           = 8  -- The message could not be received or sent due to an internal issue.
-COMMUNICATION_TIMEOUT          = 9  -- May indicate contention for a shared resource or that an existing task is taking longer than expected and the latest request has timed-out.
-DATA_TOO_LONG                  = 10 -- May indicate too much data was in the request or the required reply would be too big to handle.
-UNEXPECTED_CASE                = 11 -- May indicate that the message is out of context (e.g. an "end" command for a process that is not running) or that the message requests a feature that is not yet implemented.
-SLOTS_FULL                     = 12 -- Typically indicates that a request was valid, but the relevant content is "full" and thus elements must be removed before continuing.
-UNAUTHORISED                   = 13 -- The message could not be actioned because the connection has not been authorised.
-PARTIAL_SUCCESS                = 14 -- Can be returned in the case where some but not all Lines in a line_mask successfully sent
-COMMAND_FAILED                 = 15 -- For whatever reason, the intended command did not complete
-DEPRECATED                     = 16 -- For message which is no longer supported by this Firmware
+DECODE_FAILED = 0 -- May indicate an issue with the protocol (e.g. a mismatch in expected fields between clients). Ensure both parties are using the latest version.
+INDEX_OUT_OF_BOUNDS = 1 -- A resource was requested beyond the amount available.
+UNEXPECTED_TYPE = 2 -- The provided message was not able to be handled or processed (likely due to a lack of enough information or incorrect values).
+ENCODE_FAILED = 3 -- Not currently in use.
+KEY_MISMATCH = 4 -- Not currently in use.
+SUCCESS = 5 -- The message was decoded and handled successfully.
+INVALID_PARAMS = 6 -- The message was decoded but had invalid data for the intended outcome.
+UNEXPECTED_COMMAND = 7 -- The message was decoded but the requested action was not valid for current the state of the device.
+COMMUNICATION_FAILED = 8 -- The message could not be received or sent due to an internal issue.
+COMMUNICATION_TIMEOUT = 9 -- May indicate contention for a shared resource or that an existing task is taking longer than expected and the latest request has timed-out.
+DATA_TOO_LONG = 10 -- May indicate too much data was in the request or the required reply would be too big to handle.
+UNEXPECTED_CASE = 11 -- May indicate that the message is out of context (e.g. an "end" command for a process that is not running) or that the message requests a feature that is not yet implemented.
+SLOTS_FULL = 12 -- Typically indicates that a request was valid, but the relevant content is "full" and thus elements must be removed before continuing.
+UNAUTHORISED = 13 -- The message could not be actioned because the connection has not been authorised.
+PARTIAL_SUCCESS = 14 -- Can be returned in the case where some but not all Lines in a line_mask successfully sent
+COMMAND_FAILED = 15 -- For whatever reason, the intended command did not complete
+DEPRECATED = 16 -- For message which is no longer supported by this Firmware
 
 -- DALI Query Response
-WAITING                     = 0 -- Internal Idle State - Should not be received
-RECEIVING_FRAME             = 1 -- DALI Frame being Received
-NO_RECEIVED_FRAME           = 2 -- Frame was recorded - Empty Data
-RECEIVED_8_BIT_FRAME        = 3 -- Frame was recorded - 8 Bit Reply
-RECEIVED_16_BIT_FRAME       = 4 -- Frame was recorded - 16 Bit - Standard Message
-RECEIVED_24_BIT_FRAME       = 5 -- Frame was recorded - 24 Bit - eDALI Message
-RECEIVED_PARTIAL_FRAME    	= 6 -- Frame was recorded - Unusual Bit count
-IDLE                        = 7 -- DALI System Idle
-CALIBRATION                 = 8 -- Inhouse DALI Calibration
-ERROR_WHILE_SENDING         = 254 -- Error while trying to Transmit DALI - Possibly no Bus Power
-ERROR_WHILE_RECEIVING       = 255 -- Error while trying to Receive - Invalid Frame Data, or no response
+WAITING = 0 -- Internal Idle State - Should not be received
+RECEIVING_FRAME = 1 -- DALI Frame being Received
+NO_RECEIVED_FRAME = 2 -- Frame was recorded - Empty Data
+RECEIVED_8_BIT_FRAME = 3 -- Frame was recorded - 8 Bit Reply
+RECEIVED_16_BIT_FRAME = 4 -- Frame was recorded - 16 Bit - Standard Message
+RECEIVED_24_BIT_FRAME = 5 -- Frame was recorded - 24 Bit - eDALI Message
+RECEIVED_PARTIAL_FRAME = 6 -- Frame was recorded - Unusual Bit count
+IDLE = 7 -- DALI System Idle
+CALIBRATION = 8 -- Inhouse DALI Calibration
+ERROR_WHILE_SENDING = 254 -- Error while trying to Transmit DALI - Possibly no Bus Power
+ERROR_WHILE_RECEIVING = 255 -- Error while trying to Receive - Invalid Frame Data, or no response
+
+-- Triggers
+DALI_ARC = 0 -- For controlling DALI Arc Levels (0 to 254) and 255 for MASK
+DALI_COMMAND = 1 -- See (https://en.wikipedia.org/wiki/Digital_Addressable_Lighting_Interface#Commands_for_control_gear) for a list of common DALI commands
+DMX_CHANNELS_SPLIT_LOW = 2 -- NOTE: Expects the channel number (not zero-based)
+DMX_CHANNELS_SPLIT_HIGH = 3 -- NOTE: Expects the channel number (not zero-based)
+DMX_MULTICAST_CHANNELS_SPLIT_LOW = 4 -- NOTE: Expects the channel INDEX to start from, as it takes into account the start address set from Spektra
+DMX_MULTICAST_CHANNELS_SPLIT_HIGH = 5 -- NOTE: Expects the channel INDEX to start from, as it takes into account the start address set from Spektra
+DMX_BROADCAST = 6 -- Affects all DMX lights as per the Spektra Settings (number of lights and channels per light)
+DIDIO = 7 -- DEPRECATED
+FADE_UP_WITH_MIN = 8 -- DALI Fade Up Command - Query level and set Minimum if Off
+LIST_START = 9 -- Start a List action once
+LIST_START_CONTINUOUS = 10 -- Start a List action with repeat
+LIST_STOP = 11 -- Stop a List
+SPEKTRA_START_SEQ = 12 -- Start a Spektra Sequence
+SPEKTRA_STOP_SEQ = 13 -- Stop a playing Spektra Sequence
+SPEKTRA_THEME = 14 -- Apply a Spektra Theme
+SPEKTRA_STATIC = 15 -- DEPRECATED
+SPEKTRA_SCHEDULE = 16 -- Start the scheduled Spektra item
+LINK_START = 17 -- Enables the UDP Link State - If Configured
+LINK_STOP = 18 -- Temporarily disables the UDP Link State
+DISABLE_BURN = 19 -- Disable Burn-In
+ENABLE_BURN = 20 -- Enable Burn-In
+ON_OFF_TOG = 21 -- Turn a Group/Addres On/Off based on query level. If DALI_GROUP_ALL, toggle based on flag
+MIN_MAX_TOG = 22 -- On/Off Toggle replaced by Min/Max
+ENABLE_INPUT = 23 -- Enable Input - If latching, Input will trigger immediatly
+DISABLE_INPUT = 24 -- Disable Input
+ENABLE_TOG_INPUT = 25 -- Toggle Enable/Disable Input
+OUTPUT_TOG = 26 -- Toggle Output State between High (~22Vdc) and Low (0Vdc)
+OUTPUT_HIGH = 27 -- Set Output HIGH
+OUTPUT_LOW = 28 -- Set Output LOW
+OUTPUT_TRIG = 29 -- Set Output to trigger momentarily based on configuration
+PROFILE_CHANGE = 30 -- Change Profile - This action will reset sensor state
+FADE_LONG_PRESS = 31 -- Long Press Fade based on Toggle Flag
+SYNCRO = 32 -- Command sets clock to 11:59PM. Used for hardware time update by external Timeclock
+PRESET_CODE = 33 -- Preset Code - See Configurator Description
+CUSTOM_CODE = 34 -- Project Specific Custom Code - Talk to Creative Lighting for support
+SPEKTRA_SLEEP = 35 -- Pause Spektra sequence
+SPEKTRA_RESUME = 36 -- Resume Spektra sequence
+DEVICE_RESET = 37 -- Admin Command for Hardware Reset
+DEVICE_SAVE = 38 -- Admin Command for manual device memory save
+USER_LEVEL_STORE_NEW = 39 -- Store Current Level to Variable
+USER_LEVEL_SET_DEFAULT = 40 -- Reset User Level Variable
+USER_LEVEL_RECALL = 41 -- Recall User Level Variable
+ROOM_JOIN = 43 -- DEPRECATED
+ROOM_UNJOIN = 44 -- DEPRECATED
+TYPE8_TC_WARMER = 45 -- DALI Type 8 Warmer Command. 1 Mirek increments
+TYPE8_TC_COOLER = 46 -- DALI Type 8 Cooler Command. 1 Mirek increments
+TYPE8_TC_ACTUAL = 47 -- DALI Type 8 Set Colour to Mirek value
+LOGIC_OPERATION = 48 -- Not Implemented
+ALARM_ENABLE = 49 -- Enable Alarm at Index
+ALARM_DISABLE = 50 -- Disable Alarm at Index
+DALI_CONTROL_SENSOR_OVERRIDE = 51 -- Puts the DALI Sensor in 'override mode', which means it will no longer control the lighting until occupancy has timed-out or control is manually resumed
+DALI_CONTROL_SENSOR_TEMP_DISABLE = 52 -- Sets the occupancy timer to zero and puts the DALI Sensor in a temporary 'disable mode' (duration depends on Sensor configuration: 'Disable Period')
+DALI_CONTROL_SENSOR_RESUME = 53 -- Takes the DALI Sensor out of 'override mode'
+DALI_ARC_OVERRIDE = 54 -- For controlling DALI Arc Levels (0 to 254) and 255 for MASK - Sets associated group to override mode
+DALI_COMMAND_OVERRIDE = 55 -- For sending DALI commands - Sets associated group to override mode
+FADE_UP_WITH_MIN_OVERRIDE = 56 -- Non-native DALI command override (sets associated group to override mode)
+ON_OFF_TOG_OVERRIDE = 57 -- Non-native DALI command override (sets associated group to override mode)
+MIN_MAX_TOG_OVERRIDE = 58 -- Non-native DALI command override (sets associated group to override mode)
+MAX_OFF_TOG = 59 -- Not Implemented
+MAX_OFF_TOG_OVERRIDE = 60 -- Not Implemented
+FADE_LONG_PRESS_OVERRIDE = 61 -- Non-native DALI command override (sets associated group to override mode)
+USER_LEVEL_RECALL_OVERRIDE = 62 -- Non-native DALI command override (sets associated group to override mode)
+DMX_ZONE_FADE_UP = 63 -- DMX Spektra Zone Fade UP
+DMX_ZONE_FADE_DOWN = 64 -- DMX Spektra Zone Fade DOWN
+LOGGING_LEVEL = 65 -- Enable Logging to EEPROM to be read by configurator
+SPEKTRA_SHOW_CONTROL = 66 -- DEPRECATED
+CIRCADIAN_TEMPERATURE = 67 -- Selects Colour Temperature based on clock
+DALI_CONTROL_SENSOR_MUTE = 68 -- Mute Sensor at Index (or all with Index 255)
+DALI_CONTROL_SENSOR_UNMUTE = 69 -- Unmute to Sensor at Index (or all with Index 255)
+SPEKTRA_INTENSITY = 70 -- Allow you to specify the maximum Spektra Sequence or Theme output intensity (10 to 100)%
+ENABLE_INPUT_NO_ACTION = 71 -- Allow you to enable an input (Latching), but not trigger the action.
+SET_DALI_FADE_TIME = 72 -- Sets the DALI Fade Time
+NO_COMMAND = 254 -- This TriggerType should always be at the bottom of the list. Add any new TriggerTypes above it (up to 253).
