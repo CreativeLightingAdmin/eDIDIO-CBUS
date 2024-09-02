@@ -1,23 +1,20 @@
 require("user.eDIDIOLuaProtoc")
 
 local socket = require("socket")
-local tcp = assert(socket.tcp())
 
 -- Define the EDIDIO Class/module
 EDIDIO = {}
 EDIDIO.__index = EDIDIO
 
 function EDIDIO.new(edidio)
-    local instance = setmetatable({}, EDIDIO)
-    instance.ip = edidio.ip
-    return instance
+  local instance = setmetatable({}, EDIDIO)
+  instance.ip = edidio.ip
+  return instance
 end
 
 -- TODOs
--- DMX Message - Needs Testing
--- DMX Colour - Do we do this, or just do 3/4 times DMX Message
--- DALI DT8 CCT - Working, test with light
--- DALI DT8 Colour - Working, test with light
+-- DALI DT8 CCT - Not Working
+-- DALI DT8 Colour - Not Working
 
 -- This Function as a basic protocol buffer - Uses Override type for sensors
 function createDALIArcLevel(line, address, level) -- DALI Arc Override Command
@@ -28,12 +25,12 @@ function createDALIArcLevel(line, address, level) -- DALI Arc Override Command
             dali_message = {
                 line_mask = line,
                 address = address,
-                action = {custom_command = 0},
-                params = {arg = level},
+                action = { custom_command = 0},
+                params = { arg = level },
                 instance_type = 0,
                 op_code = 0
             }
-        }
+        },
     }
 
     -- Encode the EdidioMessage
@@ -44,19 +41,19 @@ function createDALIArcLevel(line, address, level) -- DALI Arc Override Command
 end
 
 -- This Function will create a message to query the DALI Line
-function createDALIQuery(line, address, cmd)
+function createDALIQuery(line, address, cmd) 
     local edidio_message = {
         message_id = GetMessageID(),
         payload = {
             dali_message = {
                 line_mask = line,
                 address = address,
-                action = {query = cmd},
-                params = {0},
+                action = { query = cmd},
+                params = { 0 },
                 instance_type = 0,
                 op_code = 0
             }
-        }
+        },
     }
 
     -- Encode the EdidioMessage
@@ -67,19 +64,19 @@ function createDALIQuery(line, address, cmd)
 end
 
 -- DALI Frame Message.
-function createDALICommandFrame(line, address, command)
+function createDALICommandFrame(line, address, command, arg)
     local edidio_message = {
         message_id = GetMessageID(),
         payload = {
             dali_message = {
                 line_mask = line,
                 address = address,
-                action = {command = command},
-                params = {arg = 0},
+                action = { command = command},
+                params = { arg = arg },
                 instance_type = 0,
                 op_code = 0
             }
-        }
+        },
     }
 
     -- Encode the EdidioMessage
@@ -97,12 +94,12 @@ function createDT8Command(line, address, cmd, arg)
             dali_message = {
                 line_mask = line,
                 address = address,
-                action = {type8 = cmd},
-                params = {arg = arg},
+                action = { type8 = cmd },
+        				params = { dtr = {64, 156, 0} },
                 instance_type = 0,
                 op_code = 0
             }
-        }
+        },
     }
 
     -- Encode the EdidioMessage
@@ -112,20 +109,20 @@ function createDT8Command(line, address, cmd, arg)
     return Wrap_message(encoded_message)
 end
 
--- Important DALI messages (DTR0, 1, 2, Enable Type X)
-function createDALISPECCommandFrame(line, spec, value)
+-- Create 16 bit DALI Frame
+function create16BitFrame(line, spec, value)
     local edidio_message = {
         message_id = GetMessageID(),
         payload = {
             dali_message = {
                 line_mask = line,
-                address = 0x20,
-                action = {frame_16_bit = bit.bor(bit.lshift(spec, 8), value)},
-                params = {arg = 0},
+                address = 0,
+                action = { frame_16_bit = bit.bor(bit.lshift(spec, 8), value)},
+                params = { arg = 0 },
                 instance_type = 0,
                 op_code = 0
             }
-        }
+        },
     }
 
     -- Encode the EdidioMessage
@@ -148,7 +145,7 @@ function createDMXMessage(line, channel, level, fadetime, rpt)
                 levels = level,
                 fade_time_by_10ms = fadetime
             }
-        }
+        },
     }
 
     -- Encode the EdidioMessage
@@ -158,8 +155,8 @@ function createDMXMessage(line, channel, level, fadetime, rpt)
     return Wrap_message(encoded_message)
 end
 
--- Exposed Functions
 function EDIDIO:sendDALIRGBMessage(line, address, red, green, blue)
+    tcp = assert(socket.tcp())
     -- Connect to Host
     tcp:connect(self.ip, 23)
     -- Get Message (Line, Address, Level) - Red
@@ -167,11 +164,11 @@ function EDIDIO:sendDALIRGBMessage(line, address, red, green, blue)
     -- Send Message
     tcp:send(msg)
     -- Get Message (Line, Address, Level) - Green
-    msg = createDALIArcLevel(line, address, green)
+    msg = createDALIArcLevel(line, address + 1, green)
     -- Send Message
     tcp:send(msg)
     -- Get Message (Line, Address, Level) - Blue
-    msg = createDALIArcLevel(line, address, blue)
+    msg = createDALIArcLevel(line, address + 2, blue)
     -- Send Message
     tcp:send(msg)
 end
@@ -208,122 +205,116 @@ function EDIDIO:sendDALICCTDT8Message(line, address, kelvin, brightness)
 end
 
 function EDIDIO:sendDALIArcLevel(line, address, level)
+  	tcp = assert(socket.tcp())
     -- Connect to Host
     tcp:connect(self.ip, 23)
-    tcp:settimeout(5)
     -- Get Message (Line, Address, Level)
     msg = createDALIArcLevel(line, address, level)
     -- Send Message
     tcp:send(msg)
-
-    -- Get Response
-    local decoded_message = getReply()
-
+  
+  	-- Get Response
+  	local decoded_message = getReply(tcp)
+  
     tcp:close()
-
-    -- Handle Reply - Looking for Success
+  
+  	-- Handle Reply - Looking for Success
     if decoded_message then
-        if decoded_message.payload.ack then
-            if decoded_message.payload.ack.ack_id == SUCCESS then
-                return "Success"
-            end
+			if decoded_message.payload.ack then
+      	if decoded_message.payload.ack.ack_id == SUCCESS then
+        	return "Success"
         end
-    end
+      end
+    end 
     return "Failed"
 end
 
 function EDIDIO:sendDALIFadeMessage(line, address, fadetime)
+    tcp = assert(socket.tcp())
     -- Connect to Host
     tcp:connect(self.ip, 23)
-    -- Get Message (Line, CMD, Value) - Set DTR to Fade Value
-    msg = createDALISPECCommandFrame(line, 0xA3, fadetime)
+    -- Get Message (Line, Address, Level, arg) - Set Fade from DTR
+    msg = createDALICommandFrame(line, address, 0x2E, fadetime)
     -- Send Message
     tcp:send(msg)
-    -- Get Message (Line, Address, Level) - Set Fade from DTR
-    msg = createDALICommandFrame(line, address, 0x2E)
-    -- Send Message
-    tcp:send(msg)
-    -- Send Message
-    tcp:send(msg)
-
-    -- Get Response
-    local decoded_message = getReply()
-
+  
+    	-- Get Response
+  	local decoded_message = getReply(tcp)
+  
     tcp:close()
-
-    -- Handle Reply - Looking for Success
+  
+  	-- Handle Reply - Looking for Success
     if decoded_message then
-        if decoded_message.payload.ack then
-            if decoded_message.payload.ack.ack_id == SUCCESS then
-                return "Success"
-            end
+			if decoded_message.payload.ack then
+      	if decoded_message.payload.ack.ack_id == SUCCESS then
+        	return "Success"
         end
-    end
+      end
+    end 
     return "Failed"
 end
 
-function EDIDIO:sendDALIArcLevelWithFade(line, address, level, fadetime)
-    self.sendDALIFadeMessage(line, address, fadetime)
-    return self.sendDALIArcLevel(line, address, level)
-end
-
 function EDIDIO:sendDT8Cmd(line, address, cmd, arg)
+    tcp = assert(socket.tcp())
     -- Connect to Host
     tcp:connect(self.ip, 23)
     -- Get Message
     msg = createDT8Command(line, address, cmd, arg)
     -- Send Message
     tcp:send(msg)
-
-    -- Get Response
-    local decoded_message = getReply()
-
+  
+    	-- Get Response
+  	local decoded_message = getReply(tcp)
+  
     tcp:close()
-
-    -- Handle Reply - Looking for Success
+  
+  	-- Handle Reply - Looking for Success
     if decoded_message then
-        if decoded_message.payload.ack then
-            if decoded_message.payload.ack.ack_id == SUCCESS then
-                return "Success"
-            end
+			if decoded_message.payload.ack then
+      	if decoded_message.payload.ack.ack_id == SUCCESS then
+        	return "Success"
         end
-    end
+      end
+    end 
     return "Failed"
 end
 
 function EDIDIO:getDALILevel(line, address)
+    tcp = assert(socket.tcp())
     -- Connect to Host
     tcp:connect(self.ip, 23)
     -- Get Message
     msg = createDALIQuery(line, address, 0xA0)
     -- Send Message
     tcp:send(msg)
-
+  
+  
     -- Get Response
-    local decoded_message = getReply()
-
+  	local decoded_message = getReply(tcp)
+  
     tcp:close()
-
-    -- Handle Reply - Looking for DALI Message
+  
+  	-- Handle Reply - Looking for DALI Message
     if decoded_message then
-        if decoded_message.payload.ack then
-            if decoded_message.payload.ack.ack_id == SUCCESS then
-                return "Success" -- Should not happen for GetDALILevel
-            elseif decoded_message.payload.ack.ack_id == INVALID_PARAMS then
-                return "Invalid Parameters"
-            end
-        elseif decoded_message.payload.dali_query then
-            if decoded_message.payload.dali_query.dali_flag == RECEIVED_8_BIT_FRAME then
-                return "Valid DALI Response", decoded_message.payload.dali_query.response_data.uint_data
-            else
-                return "Bad DALI Response"
-            end
+			if decoded_message.payload.ack then
+      	if decoded_message.payload.ack.ack_id == SUCCESS then
+        	return "Success" -- Should not happen for GetDALILevel
+        elseif decoded_message.payload.ack.ack_id == INVALID_PARAMS then
+          return "Invalid Parameters"
         end
-    end
+      elseif decoded_message.payload.dali_query then
+      		if decoded_message.payload.dali_query.dali_flag == RECEIVED_8_BIT_FRAME then
+             return "Valid DALI Response", decoded_message.payload.dali_query.response_data.uint_data
+          else
+             return "Bad DALI Response"
+          end
+      end
+    end 
     return "Failed"
 end
 
 function EDIDIO:sendDMXLevels(line, channel, level, fadetime, rpt)
+    tcp = assert(socket.tcp())
     -- Connect to Host
     tcp:connect(self.ip, 23)
     -- Get Message
@@ -333,26 +324,27 @@ function EDIDIO:sendDMXLevels(line, channel, level, fadetime, rpt)
 end
 
 function EDIDIO:sendDMXRGBW(line, channel, red, green, blue, white, fadetime, rpt)
+    tcp = assert(socket.tcp())
     -- Connect to Host
     tcp:connect(self.ip, 23)
     -- Get Message
     msg = createDMXMessage(line, channel, {red, green, blue, white}, fadetime, rpt)
     -- Send Message
     tcp:send(msg)
-
+  
     -- Get Response
-    local decoded_message = getReply()
-
+  	local decoded_message = getReply(tcp)
+  
     tcp:close()
-
-    -- Handle Reply - Looking for Success
+  
+  	-- Handle Reply - Looking for Success
     if decoded_message then
-        if decoded_message.payload.ack then
-            if decoded_message.payload.ack.ack_id == SUCCESS then
-                return "Success"
-            end
+			if decoded_message.payload.ack then
+      	if decoded_message.payload.ack.ack_id == SUCCESS then
+        	return "Success"
         end
-    end
+      end
+    end 
     return "Failed"
 end
 
@@ -361,10 +353,10 @@ function closeConnection()
     tcp:close()
 end
 
-function getReply()
+function getReply(tcp) 
     -- Receive the first 3 bytes
     local header, err, partial = tcp:receive(3)
-
+    
     if not header then
         --log("Failed to receive header:", err)
         return nil
@@ -373,10 +365,10 @@ function getReply()
     -- Extract the 2nd and 3rd bytes to determine the length
     local byte2 = header:byte(2)
     local byte3 = header:byte(3)
-    local length = byte2 * 256 + byte3 -- Combine the two bytes to form the length
-
+    local length = byte2 * 256 + byte3  -- Combine the two bytes to form the length
+  
     --log("Message Length:", length)
-
+  
     -- Receive the rest of the message based on the extracted length
     local body, err, partial = tcp:receive(length)
 
@@ -405,7 +397,7 @@ end
 --     log("Ack Message:", decoded_message.payload.ack)
 --     PrintPairs(decoded_message.payload.ack);
 --  end
---end
+--end 
 
 -- Helper Functions
 -- Colour Conversion
