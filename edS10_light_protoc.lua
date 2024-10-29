@@ -39,6 +39,21 @@ local function encode_repeated_uint32(field_number, values)
     return encoded
 end
 
+-- Helper function to encode a float to bytes
+function float_encode(value)
+
+    local int = math.floor(value * 2^23 + 0.5)  -- Convert float to integer representation
+    local bytes = {}
+
+    -- Extract bytes from the integer representation
+    for i = 1, 4 do
+        bytes[i] = bit.band(int, 0xFF)  -- Get the last byte
+        int = bit.rshift(int, 8)  -- Shift right
+    end
+
+    return string.char(unpack(bytes))  -- Convert to string
+end
+
 -- Function to encode AckMessage
 local function encode_ack_message(ack_message)
     local encoded_message = {}
@@ -221,6 +236,258 @@ local function encode_external_trigger_message(external_trigger_message)
     return table.concat(encoded_message)
 end
 
+-- Function to encode DALICommandType
+local function encode_dali_command_type(dali_command)
+    local encoded_command = {}
+
+    -- Check if the provided command is valid
+    if dali_command >= 0 and dali_command <= 267 then
+        -- Start with the field number (1) and wire type (0 - varint)
+        table.insert(encoded_command, string.char(0x08))  -- Field number 1 (DALI Command Type), wire type 0 (varint)
+        table.insert(encoded_command, encode_varint(dali_command)) -- Encode the command itself
+    else
+        error("Invalid DALI Command Type: " .. tostring(dali_command))
+    end
+
+    return table.concat(encoded_command)
+end
+
+-- Function to encode TriggerEvent
+local function encode_trigger_event(trigger_event)
+    local encoded_trigger = {}
+
+    -- Encode type (TriggerType as varint)
+    if trigger_event.type then
+        table.insert(encoded_trigger, string.char(0x08))  -- field number 1, wire type 0 (varint)
+        table.insert(encoded_trigger, encode_varint(trigger_event.type))
+    end
+
+    -- Encode payload based on its type (oneof)
+    if trigger_event.payload then
+        if trigger_event.payload.level then
+            table.insert(encoded_trigger, string.char(0x10))  -- field number 2, wire type 0 (varint)
+            table.insert(encoded_trigger, encode_varint(trigger_event.payload.level))
+        elseif trigger_event.payload.dali_command then
+            table.insert(encoded_trigger, string.char(0x1A))  -- field number 3, wire type 2 (length-delimited)
+            local encoded_dali_command = encode_dali_command_type(trigger_event.payload.dali_command)
+            table.insert(encoded_trigger, encode_length_delimited(encoded_dali_command))
+        end
+    end
+
+    -- Encode target_address (as varint)
+    if trigger_event.target_address then
+        table.insert(encoded_trigger, string.char(0x20))  -- field number 4, wire type 0 (varint)
+        table.insert(encoded_trigger, encode_varint(trigger_event.target_address))
+    end
+
+    -- Encode line_mask (as varint)
+    if trigger_event.line_mask then
+        table.insert(encoded_trigger, string.char(0x28))  -- field number 5, wire type 0 (varint)
+        table.insert(encoded_trigger, encode_varint(trigger_event.line_mask))
+    end
+
+    -- Encode zone (as varint)
+    if trigger_event.zone then
+        table.insert(encoded_trigger, string.char(0x30))  -- field number 6, wire type 0 (varint)
+        table.insert(encoded_trigger, encode_varint(trigger_event.zone))
+    end
+
+    -- Encode value (as varint)
+    if trigger_event.value then
+        table.insert(encoded_trigger, string.char(0x38))  -- field number 7, wire type 0 (varint)
+        table.insert(encoded_trigger, encode_varint(trigger_event.value))
+    end
+
+    -- Encode query_index (as varint)
+    if trigger_event.query_index then
+        table.insert(encoded_trigger, string.char(0x40))  -- field number 8, wire type 0 (varint)
+        table.insert(encoded_trigger, encode_varint(trigger_event.query_index))
+    end
+
+    -- Encode source (as varint)
+    if trigger_event.source then
+        table.insert(encoded_trigger, string.char(0x48))  -- field number 9, wire type 0 (varint)
+        table.insert(encoded_trigger, encode_varint(trigger_event.source))
+    end
+
+    return table.concat(encoded_trigger)
+end
+
+-- Function to encode InputStateResponse
+local function encode_input_state_response(input_id, state)
+    local encoded_response = {}
+
+    -- Field number for input_id is 1 (varint)
+    table.insert(encoded_response, string.char(0x08))  -- Field number 1
+    table.insert(encoded_response, encode_varint(input_id))  -- Encode input_id
+
+    -- Field number for state is 2 (varint)
+    table.insert(encoded_response, string.char(0x10))  -- Field number 2
+    table.insert(encoded_response, encode_varint(state))  -- Encode state
+
+    return table.concat(encoded_response)
+end
+
+-- Function to encode DALI Sensor Event
+local function encode_dali_sensor_event(sensor_id, value)
+    local encoded_event = {}
+
+    -- Field number for sensor_id is 1 (varint)
+    table.insert(encoded_event, string.char(0x08))  -- Field number 1
+    table.insert(encoded_event, encode_varint(sensor_id))  -- Encode sensor_id
+
+    -- Field number for value is 2 (varint)
+    table.insert(encoded_event, string.char(0x10))  -- Field number 2
+    table.insert(encoded_event, encode_varint(value))  -- Encode value
+
+    return table.concat(encoded_event)
+end
+
+-- Function to encode DALI 24 Input Event
+local function encode_dali_24_input_event(input_id, value)
+    local encoded_event = {}
+
+    -- Field number for input_id is 1 (varint)
+    table.insert(encoded_event, string.char(0x08))  -- Field number 1
+    table.insert(encoded_event, encode_varint(input_id))  -- Encode input_id
+
+    -- Field number for value is 2 (varint)
+    table.insert(encoded_event, string.char(0x10))  -- Field number 2
+    table.insert(encoded_event, encode_varint(value))  -- Encode value
+
+    return table.concat(encoded_event)
+end
+
+local function encode_event_filter(event_filter)
+    local encoded_message = {}
+
+    -- Encode the filter for specific event types
+    if event_filter.event_types then
+        for _, event_type in ipairs(event_filter.event_types) do
+            -- Assuming EventType is an enum starting from 0
+            table.insert(encoded_message, string.char(0x0A)) -- field number for event_types, wire type 2 (length-delimited)
+            table.insert(encoded_message, encode_varint(event_type)) -- Encode the event_type as a varint
+        end
+    end
+
+    -- Encode the filter for specific input states
+    if event_filter.input_states then
+        for _, input_state in ipairs(event_filter.input_states) do
+            table.insert(encoded_message, string.char(0x12)) -- field number for input_states, wire type 2 (length-delimited)
+            table.insert(encoded_message, encode_varint(input_state)) -- Encode the input_state as a varint
+        end
+    end
+
+    -- Encode additional filters if necessary (e.g., DALI input states, room filters, etc.)
+    if event_filter.dali_input_states then
+        for _, dali_input_state in ipairs(event_filter.dali_input_states) do
+            table.insert(encoded_message, string.char(0x1A)) -- field number for dali_input_states, wire type 2 (length-delimited)
+            table.insert(encoded_message, encode_varint(dali_input_state)) -- Encode the DALI input state as a varint
+        end
+    end
+
+    -- Return the concatenated encoded message
+    return table.concat(encoded_message)
+end
+
+local function encode_dali_24_frame_event(dali_24_frame_event)
+    local encoded_message = {}
+
+    -- Encode line
+    table.insert(encoded_message, string.char(0x08)) -- field number for line, wire type 0 (varint)
+    table.insert(encoded_message, encode_varint(dali_24_frame_event.line)) -- Encode as varint
+
+    -- Encode frame
+    table.insert(encoded_message, string.char(0x10)) -- field number for frame, wire type 0 (varint)
+    table.insert(encoded_message, encode_varint(dali_24_frame_event.frame)) -- Encode as varint
+
+    -- Return the concatenated encoded message
+    return table.concat(encoded_message)
+end
+
+-- Function to encode the EventMessage
+local function encode_event_message(event_message)
+    local encoded_message = {}
+
+    -- Encode the event field (EventType as a varint)
+    if event_message.event then
+        table.insert(encoded_message, string.char(0x08))  -- field number 1, wire type 0 (varint)
+        table.insert(encoded_message, encode_varint(event_message.event))
+    end
+
+    -- Encode the event_data based on the type of event_data
+    if event_message.event_data then
+        if event_message.event_data.trigger then
+            table.insert(encoded_message, string.char(0x12))  -- field number 2, wire type 2 (length-delimited)
+            local encoded_trigger = encode_trigger_event(event_message.event_data.trigger)
+            table.insert(encoded_message, encode_length_delimited(encoded_trigger))
+        elseif event_message.event_data.inputs then
+            table.insert(encoded_message, string.char(0x1A))  -- field number 3, wire type 2 (length-delimited)
+            local encoded_inputs = encode_input_state_response(event_message.event_data.inputs)
+            table.insert(encoded_message, encode_length_delimited(encoded_inputs))
+        elseif event_message.event_data.payload then
+            table.insert(encoded_message, string.char(0x22))  -- field number 4, wire type 2 (length-delimited)
+            local encoded_payload = encode_payload_message(event_message.event_data.payload)
+            table.insert(encoded_message, encode_length_delimited(encoded_payload))
+        elseif event_message.event_data.sensor then
+            table.insert(encoded_message, string.char(0x32))  -- field number 6, wire type 2 (length-delimited)
+            local encoded_sensor = encode_dali_sensor_event(event_message.event_data.sensor)
+            table.insert(encoded_message, encode_length_delimited(encoded_sensor))
+        elseif event_message.event_data.dali_24_input then
+            table.insert(encoded_message, string.char(0x3A))  -- field number 7, wire type 2 (length-delimited)
+            local encoded_dali_24_input = encode_dali_24_input_event(event_message.event_data.dali_24_input)
+            table.insert(encoded_message, encode_length_delimited(encoded_dali_24_input))
+        elseif event_message.event_data.filter then
+            table.insert(encoded_message, string.char(0x42))  -- field number 8, wire type 2 (length-delimited)
+            local encoded_filter = encode_event_filter(event_message.event_data.filter)
+            table.insert(encoded_message, encode_length_delimited(encoded_filter))
+        elseif event_message.event_data.dali_24_frame then
+            table.insert(encoded_message, string.char(0x4A))  -- field number 9, wire type 2 (length-delimited)
+            local encoded_dali_24_frame = encode_dali_24_frame_event(event_message.event_data.dali_24_frame)
+            table.insert(encoded_message, encode_length_delimited(encoded_dali_24_frame))
+        end
+    end
+
+    return table.concat(encoded_message)
+end
+
+-- Function to encode TimeClockMessage
+local function encode_time_clock_message(time_clock_message)
+    local data = {}
+
+    -- Encode date
+    table.insert(data, encode_varint(1))  -- Field number for date
+    table.insert(data, encode_varint(time_clock_message.date)) -- Packed date value
+
+    -- Encode time
+    table.insert(data, encode_varint(2))  -- Field number for time
+    table.insert(data, encode_varint(time_clock_message.time)) -- Packed time value
+
+    return table.concat(data)
+end
+
+-- Function to encode AytMessage
+local function encode_ayt_message(ayt_message)
+    local data = {}
+
+    -- Encode timesinceboot
+    table.insert(data, encode_varint(1))  -- Field number for timesinceboot
+    table.insert(data, encode_varint(ayt_message.timesinceboot))
+
+    -- Encode temperature
+    table.insert(data, encode_varint(2))  -- Field number for temperature
+    table.insert(data, float_encode(ayt_message.temperature))  -- Assuming float_encode returns a string
+
+    -- Encode TimeClockMessage
+    local encoded_time_clock = encode_time_clock_message(ayt_message.time)
+    table.insert(data, encode_varint(3))  -- Field number for time
+    table.insert(data, encode_varint(#encoded_time_clock))  -- Length of the TimeClockMessage
+    table.insert(data, encoded_time_clock)  -- Add the encoded TimeClockMessage
+
+    return table.concat(data)  -- Combine all encoded parts into a single string
+end
+
+
 -- Function to encode the EdidioMessage
 function Encode_edidio_message(edidio_message)
     local encoded_message = {}
@@ -254,6 +521,14 @@ function Encode_edidio_message(edidio_message)
             table.insert(encoded_message, string.char(0xAA, 0x01)) -- field number 21, wire type 2 (length-delimited)
             local encoded_trigger = encode_external_trigger_message(edidio_message.payload.external_trigger)
             table.insert(encoded_message, encode_length_delimited(encoded_trigger))
+        elseif edidio_message.payload.event_message then
+            table.insert(encoded_message, string.char(0xD2, 0x02))  -- field number 34, wire type 2 (length-delimited)
+            local encoded_event = encode_event_message(edidio_message.payload.event_message)
+            table.insert(encoded_message, encode_length_delimited(encoded_event))        
+        elseif edidio_message.payload.ayt_message then
+            table.insert(encoded_message, string.char(0xB2, 0x01)) -- field number 42, wire type 2 (length-delimited)
+            local encoded_ayt = encode_ayt_message(edidio_message.payload.ayt_message)
+            table.insert(encoded_message, encode_length_delimited(encoded_ayt))
         end
     end
 
@@ -644,6 +919,279 @@ local function decode_external_trigger_message(data)
     return external_trigger_message
 end
 
+-- Function to decode TriggerEvent
+local function decode_trigger_event(data)
+    local pos = 1
+    local trigger_event = {}
+
+    while pos <= #data do
+        local field_number, wire_type, new_pos = decode_field_key(data, pos)
+        pos = new_pos
+
+        if field_number == 1 and wire_type == 0 then -- trigger_type (uint32 or enum)
+            trigger_event.trigger_type, pos = varint_decode(data, pos)
+
+        elseif field_number == 2 and wire_type == 0 then -- trigger_id (uint32)
+            trigger_event.trigger_id, pos = varint_decode(data, pos)
+
+        elseif field_number == 3 and wire_type == 2 then -- payload (length-delimited, if applicable)
+            local payload_data
+            payload_data, pos = decode_length_delimited(data, pos)
+            trigger_event.payload = decode_payload_message(payload_data)
+
+        else
+            -- Skip unknown fields
+            if wire_type == 0 then -- varint
+                _, pos = varint_decode(data, pos)
+            elseif wire_type == 2 then -- length-delimited
+                local length
+                length, pos = varint_decode(data, pos)
+                pos = pos + length
+            else
+                error("Unsupported wire type: " .. wire_type)
+            end
+        end
+    end
+
+    return trigger_event
+end
+
+-- Function to decode InputStateResponse
+local function decode_input_state_response(data)
+    local pos = 1
+    local input_state_response = {}
+
+    while pos <= #data do
+        local field_number, wire_type, new_pos = decode_field_key(data, pos)
+        pos = new_pos
+
+        if field_number == 1 and wire_type == 0 then -- state_id (uint32)
+            input_state_response.state_id, pos = varint_decode(data, pos)
+
+        elseif field_number == 2 and wire_type == 0 then -- input_value (uint32)
+            input_state_response.input_value, pos = varint_decode(data, pos)
+
+        elseif field_number == 3 and wire_type == 0 then -- timestamp (uint32)
+            input_state_response.timestamp, pos = varint_decode(data, pos)
+
+        else
+            -- Skip unknown fields
+            if wire_type == 0 then -- varint
+                _, pos = varint_decode(data, pos)
+            elseif wire_type == 2 then -- length-delimited
+                local length
+                length, pos = varint_decode(data, pos)
+                pos = pos + length
+            else
+                error("Unsupported wire type: " .. wire_type)
+            end
+        end
+    end
+
+    return input_state_response
+end
+
+-- Function to decode DALISensorEvent
+local function decode_dali_sensor_event(data)
+    local pos = 1
+    local dali_sensor_event = {}
+
+    while pos <= #data do
+        local field_number, wire_type, new_pos = decode_field_key(data, pos)
+        pos = new_pos
+
+        if field_number == 1 and wire_type == 0 then -- line (uint32)
+            dali_sensor_event.line, pos = varint_decode(data, pos)
+
+        elseif field_number == 2 and wire_type == 0 then -- sensor_value (uint32)
+            dali_sensor_event.sensor_value, pos = varint_decode(data, pos)
+
+        elseif field_number == 3 and wire_type == 0 then -- timestamp (uint32)
+            dali_sensor_event.timestamp, pos = varint_decode(data, pos)
+
+        else
+            -- Skip unknown fields
+            if wire_type == 0 then -- varint
+                _, pos = varint_decode(data, pos)
+            elseif wire_type == 2 then -- length-delimited
+                local length
+                length, pos = varint_decode(data, pos)
+                pos = pos + length
+            else
+                error("Unsupported wire type: " .. wire_type)
+            end
+        end
+    end
+
+    return dali_sensor_event
+end
+
+-- Function to decode DALI24InputEvent
+local function decode_dali_24_input_event(data)
+    local pos = 1
+    local dali_24_input_event = {}
+
+    while pos <= #data do
+        local field_number, wire_type, new_pos = decode_field_key(data, pos)
+        pos = new_pos
+
+        if field_number == 1 and wire_type == 0 then -- line (uint32)
+            dali_24_input_event.line, pos = varint_decode(data, pos)
+
+        elseif field_number == 2 and wire_type == 0 then -- input_value (uint32)
+            dali_24_input_event.input_value, pos = varint_decode(data, pos)
+
+        elseif field_number == 3 and wire_type == 0 then -- timestamp (uint32)
+            dali_24_input_event.timestamp, pos = varint_decode(data, pos)
+
+        else
+            -- Skip unknown fields
+            if wire_type == 0 then -- varint
+                _, pos = varint_decode(data, pos)
+            elseif wire_type == 2 then -- length-delimited
+                local length
+                length, pos = varint_decode(data, pos)
+                pos = pos + length
+            else
+                error("Unsupported wire type: " .. wire_type)
+            end
+        end
+    end
+
+    return dali_24_input_event
+end
+
+-- Function to decode EventFilter
+local function decode_event_filter(data)
+    local pos = 1
+    local event_filter = {}
+
+    while pos <= #data do
+        local field_number, wire_type, new_pos = decode_field_key(data, pos)
+        pos = new_pos
+
+        if field_number == 1 and wire_type == 0 then -- filter_type (uint32)
+            event_filter.filter_type, pos = varint_decode(data, pos)
+
+        elseif field_number == 2 and wire_type == 0 then -- filter_value (uint32)
+            event_filter.filter_value, pos = varint_decode(data, pos)
+
+        elseif field_number == 3 and wire_type == 0 then -- timestamp (uint32)
+            event_filter.timestamp, pos = varint_decode(data, pos)
+
+        else
+            -- Skip unknown fields
+            if wire_type == 0 then -- varint
+                _, pos = varint_decode(data, pos)
+            elseif wire_type == 2 then -- length-delimited
+                local length
+                length, pos = varint_decode(data, pos)
+                pos = pos + length
+            else
+                error("Unsupported wire type: " .. wire_type)
+            end
+        end
+    end
+
+    return event_filter
+end
+
+-- Function to decode DALI24FrameEvent
+local function decode_dali_24_frame_event(data)
+    local pos = 1
+    local dali_24_frame_event = {}
+
+    while pos <= #data do
+        local field_number, wire_type, new_pos = decode_field_key(data, pos)
+        pos = new_pos
+
+        if field_number == 1 and wire_type == 0 then -- line (uint32)
+            dali_24_frame_event.line, pos = varint_decode(data, pos)
+
+        elseif field_number == 2 and wire_type == 0 then -- frame (uint32)
+            dali_24_frame_event.frame, pos = varint_decode(data, pos)
+
+        else
+            -- Skip unknown fields
+            if wire_type == 0 then -- varint
+                _, pos = varint_decode(data, pos)
+            elseif wire_type == 2 then -- length-delimited
+                local length
+                length, pos = varint_decode(data, pos)
+                pos = pos + length
+            else
+                error("Unsupported wire type: " .. wire_type)
+            end
+        end
+    end
+
+    return dali_24_frame_event
+end
+
+-- Function to decode EventMessage
+local function decode_event_message(data)
+    local pos = 1
+    local event_message = {}
+
+    while pos <= #data do
+        local field_number, wire_type, new_pos = decode_field_key(data, pos)
+        pos = new_pos
+
+        if field_number == 1 and wire_type == 0 then -- event (EventType)
+            event_message.event, pos = varint_decode(data, pos)
+
+        elseif field_number == 2 and wire_type == 2 then -- TriggerEvent (length-delimited)
+            local message_data
+            message_data, pos = decode_length_delimited(data, pos)
+            event_message.event_data = {trigger = decode_trigger_event(message_data)}
+
+        elseif field_number == 3 and wire_type == 2 then -- InputStateResponse (length-delimited)
+            local message_data
+            message_data, pos = decode_length_delimited(data, pos)
+            event_message.event_data = {inputs = decode_input_state_response(message_data)}
+
+        elseif field_number == 4 and wire_type == 2 then -- PayloadMessage (length-delimited)
+            local message_data
+            message_data, pos = decode_length_delimited(data, pos)
+            event_message.event_data = {payload = decode_payload_message(message_data)}
+
+        elseif field_number == 6 and wire_type == 2 then -- DALISensorEvent (length-delimited)
+            local message_data
+            message_data, pos = decode_length_delimited(data, pos)
+            event_message.event_data = {sensor = decode_dali_sensor_event(message_data)}
+
+        elseif field_number == 7 and wire_type == 2 then -- DALI24InputEvent (length-delimited)
+            local message_data
+            message_data, pos = decode_length_delimited(data, pos)
+            event_message.event_data = {dali_24_input = decode_dali_24_input_event(message_data)}
+
+        elseif field_number == 8 and wire_type == 2 then -- EventFilter (length-delimited)
+            local message_data
+            message_data, pos = decode_length_delimited(data, pos)
+            event_message.event_data = {filter = decode_event_filter(message_data)}
+
+        elseif field_number == 9 and wire_type == 2 then -- DALI24FrameEvent (length-delimited)
+            local message_data
+            message_data, pos = decode_length_delimited(data, pos)
+            event_message.event_data = {dali_24_frame = decode_dali_24_frame_event(message_data)}
+
+        else
+            -- Skip unknown fields
+            if wire_type == 0 then -- varint
+                _, pos = varint_decode(data, pos)
+            elseif wire_type == 2 then -- length-delimited
+                local length
+                length, pos = varint_decode(data, pos)
+                pos = pos + length
+            else
+                error("Unsupported wire type: " .. wire_type)
+            end
+        end
+    end
+
+    return event_message
+end
+
 -- Function to decode EdidioMessage
 function Decode_edidio_message(data)
     local pos = 1
@@ -675,6 +1223,10 @@ function Decode_edidio_message(data)
             local message_data
             message_data, pos = decode_length_delimited(data, pos)
             edidio_message.payload = {external_trigger = decode_external_trigger_message(message_data)}
+        elseif field_number == 22 and wire_type == 2 then -- EventMessage (length-delimited)
+            local message_data
+            message_data, pos = decode_length_delimited(data, pos)
+            edidio_message.payload = {event_message = decode_event_message(message_data)}
         else
             -- Skip unknown fields
             if wire_type == 0 then -- varint
@@ -886,6 +1438,124 @@ SET_TEMP_COLOUR_TEMP = 7
 COLOUR_TEMP_COOLER = 8
 COLOUR_TEMP_WARMER = 9
 
+-- Standard DALI command
+DALI_OFF                       = 0;
+DALI_FADE_UP                   = 1;
+DALI_FADE_DOWN                 = 2;
+DALI_STEP_UP                   = 3;
+DALI_STEP_DOWN                 = 4;
+DALI_MAX_LEVEL                 = 5;
+DALI_MIN_LEVEL                 = 6;
+DALI_STEP_DOWN_OFF             = 7;
+DALI_ON_STEP_UP                = 8;
+DALI_ENABLE_DAPC_SEQ           = 9; 
+DALI_RECALL_LAST_ACTIVE_LEVEL  = 10;
+DALI_CONTINUOUS_UP             = 11;
+DALI_CONTINUOUS_DOWN           = 12;
+DALI_RECALL_SCENE_0            = 16;
+DALI_RECALL_SCENE_1            = 17;
+DALI_RECALL_SCENE_2            = 18;
+DALI_RECALL_SCENE_3            = 19;
+DALI_RECALL_SCENE_4            = 20;
+DALI_RECALL_SCENE_5            = 21;
+DALI_RECALL_SCENE_6            = 22;
+DALI_RECALL_SCENE_7            = 23;
+DALI_RECALL_SCENE_8            = 24;
+DALI_RECALL_SCENE_9            = 25;
+DALI_RECALL_SCENE_10           = 26;
+DALI_RECALL_SCENE_11           = 27;
+DALI_RECALL_SCENE_12           = 28;
+DALI_RECALL_SCENE_13           = 29;
+DALI_RECALL_SCENE_14           = 30;
+DALI_RECALL_SCENE_15           = 31;
+DALI_RESET                     = 32;
+DALI_STORE_ACTUAL_LEVEL_DTR0   = 33;
+DALI_SAVE_PERSISTENT_VARS      = 34;
+DALI_SET_OPERATING_MODE        = 35;
+DALI_RESET_MEMORY_BANK         = 36;
+DALI_IDENTIFY_DEVICE           = 37;
+DALI_SET_MAX_LEVEL             = 42;
+DALI_SET_MIN_LEVEL             = 43;
+DALI_SET_SYSTEM_FAILURE_LEVEL  = 44;
+DALI_SET_POWER_ON_LEVEL        = 45;
+DALI_SET_FADE_TIME             = 46;
+DALI_SET_FADE_RATE             = 47;
+DALI_SET_EXT_FADE_TIME         = 48;
+DALI_SET_SCENE_0               = 64;
+DALI_SET_SCENE_1               = 65;
+DALI_SET_SCENE_2               = 66;
+DALI_SET_SCENE_3               = 67;
+DALI_SET_SCENE_4               = 68;
+DALI_SET_SCENE_5               = 69;
+DALI_SET_SCENE_6               = 70;
+DALI_SET_SCENE_7               = 71;
+DALI_SET_SCENE_8               = 72;
+DALI_SET_SCENE_9               = 73;
+DALI_SET_SCENE_10              = 74;
+DALI_SET_SCENE_11              = 75;
+DALI_SET_SCENE_12              = 76;
+DALI_SET_SCENE_13              = 77;
+DALI_SET_SCENE_14              = 78;
+DALI_SET_SCENE_15              = 79;
+DALI_REMOVE_FROM_SCENE_0       = 80;
+DALI_REMOVE_FROM_SCENE_1       = 81;
+DALI_REMOVE_FROM_SCENE_2       = 82;
+DALI_REMOVE_FROM_SCENE_3       = 83;
+DALI_REMOVE_FROM_SCENE_4       = 84;
+DALI_REMOVE_FROM_SCENE_5       = 85;
+DALI_REMOVE_FROM_SCENE_6       = 86;
+DALI_REMOVE_FROM_SCENE_7       = 87;
+DALI_REMOVE_FROM_SCENE_8       = 88;
+DALI_REMOVE_FROM_SCENE_9       = 89;
+DALI_REMOVE_FROM_SCENE_10      = 90;
+DALI_REMOVE_FROM_SCENE_11      = 91;
+DALI_REMOVE_FROM_SCENE_12      = 92;
+DALI_REMOVE_FROM_SCENE_13      = 93;
+DALI_REMOVE_FROM_SCENE_14      = 94;
+DALI_REMOVE_FROM_SCENE_15      = 95;
+DALI_ADD_TO_GROUP_0            = 96;
+DALI_ADD_TO_GROUP_1            = 97;
+DALI_ADD_TO_GROUP_2            = 98;
+DALI_ADD_TO_GROUP_3            = 99;
+DALI_ADD_TO_GROUP_4            = 100;
+DALI_ADD_TO_GROUP_5            = 101;
+DALI_ADD_TO_GROUP_6            = 102;
+DALI_ADD_TO_GROUP_7            = 103;
+DALI_ADD_TO_GROUP_8            = 104;
+DALI_ADD_TO_GROUP_9            = 105;
+DALI_ADD_TO_GROUP_10           = 106;
+DALI_ADD_TO_GROUP_11           = 107;
+DALI_ADD_TO_GROUP_12           = 108;
+DALI_ADD_TO_GROUP_13           = 109;
+DALI_ADD_TO_GROUP_14           = 110;
+DALI_ADD_TO_GROUP_15           = 111;
+DALI_REMOVE_FROM_GROUP_0       = 112;
+DALI_REMOVE_FROM_GROUP_1       = 113;
+DALI_REMOVE_FROM_GROUP_2       = 114;
+DALI_REMOVE_FROM_GROUP_3       = 115;
+DALI_REMOVE_FROM_GROUP_4       = 116;
+DALI_REMOVE_FROM_GROUP_5       = 117;
+DALI_REMOVE_FROM_GROUP_6       = 118;
+DALI_REMOVE_FROM_GROUP_7       = 119;
+DALI_REMOVE_FROM_GROUP_8       = 120;
+DALI_REMOVE_FROM_GROUP_9       = 121;
+DALI_REMOVE_FROM_GROUP_10      = 122;
+DALI_REMOVE_FROM_GROUP_11      = 123;
+DALI_REMOVE_FROM_GROUP_12      = 124;
+DALI_REMOVE_FROM_GROUP_13      = 125;
+DALI_REMOVE_FROM_GROUP_14      = 126;
+DALI_REMOVE_FROM_GROUP_15      = 127;
+DALI_SET_SHORT_ADDRESS         = 128;
+DALI_ENABLE_WRITE_MEMORY       = 129;
+DALI_TERMINATE                 = 255;
+DALI_INITIALISE                = 258;
+DALI_RANDOMISE                 = 259;
+DALI_WITHDRAW                  = 261;
+DALI_SEARCH_ADDR_H             = 264;
+DALI_SEARCH_ADDR_M             = 265;
+DALI_SEARCH_ADDR_L             = 266;
+DALI_PROGRAM_SHORT_ADDRESS     = 267;
+
 -- ACK
 DECODE_FAILED = 0 -- May indicate an issue with the protocol (e.g. a mismatch in expected fields between clients). Ensure both parties are using the latest version.
 INDEX_OUT_OF_BOUNDS = 1 -- A resource was requested beyond the amount available.
@@ -992,3 +1662,14 @@ SPEKTRA_INTENSITY = 70 -- Allow you to specify the maximum Spektra Sequence or T
 ENABLE_INPUT_NO_ACTION = 71 -- Allow you to enable an input (Latching), but not trigger the action.
 SET_DALI_FADE_TIME = 72 -- Sets the DALI Fade Time
 NO_COMMAND = 254 -- This TriggerType should always be at the bottom of the list. Add any new TriggerTypes above it (up to 253).
+
+-- EventType Messages
+REGISTER                = 0; -- Sent by the client to register for events.
+TRIGGER_EVENT           = 1; -- Emitted when trigger runs an action listed in TriggerType.
+INPUT_EVENT             = 2; -- Emitted when a physical Input is triggered.
+SENSOR_EVENT            = 3; -- Emitted when a Sensor (24-bit DALI or 25-bit) is triggered.
+CONTROL_EVENT           = 4; -- Emitted when an DALI/DMX/phyiscal output type event is done. References an action in TriggerType.
+ROOM_JOIN_EVENT         = 5; -- Emitted when rooms are joined/unjoined.
+DALI_24_INPUT_EVENT     = 6; -- Emitted when a 24-bit DALI Input Device is triggered.
+DALI_24_FRAME_EVENT     = 7; -- Emitted when a 24-bit DALI Frame is received.
+
