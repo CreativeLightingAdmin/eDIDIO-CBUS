@@ -898,20 +898,25 @@ end
 -- Function to decode TriggerEvent
 local function decode_trigger_event(data)
     local pos = 1
-    local trigger_event = {}
+    local trigger_event = {payload = {}}
 
     while pos <= #data do
         local field_number, wire_type, new_pos = decode_field_key(data, pos)
         pos = new_pos
+    
+    		--log("FIELD " .. field_number .. " WIRE " .. wire_type)
 
         if field_number == 1 and wire_type == 0 then -- TriggerType (varint)
             trigger_event.type, pos = varint_decode(data, pos)
 
         elseif field_number == 2 and wire_type == 0 then -- level (varint, oneof)
-            trigger_event.payload = {level = varint_decode(data, pos)}
+            local level_value, new_pos = varint_decode(data, pos)
+            trigger_event.payload = { level = level_value }
+            pos = new_pos
 
         elseif field_number == 3 and wire_type == 0 then -- dali_command (varint, oneof)
-            trigger_event.payload = {dali_command = varint_decode(data, pos)}
+            trigger_event.payload.dali_command, pos = varint_decode(data, pos)
+            trigger_event.payload.level = nil 
 
         elseif field_number == 4 and wire_type == 0 then -- target_address (varint)
             trigger_event.target_address, pos = varint_decode(data, pos)
@@ -947,6 +952,7 @@ local function decode_trigger_event(data)
 
     return trigger_event
 end
+
 
 -- Function to decode InputStateResponse
 local function decode_input_state_response(data)
@@ -1124,10 +1130,14 @@ end
 local function decode_event_message(data)
     local pos = 1
     local event_message = {}
+  
+    --logHex(data)
 
     while pos <= #data do
         local field_number, wire_type, new_pos = decode_field_key(data, pos)
         pos = new_pos
+    
+        --log("FIELD " .. field_number .. " WIRE " .. wire_type)
     
         if field_number == 1 and wire_type == 0 then -- event (EventType)
             event_message.event, pos = varint_decode(data, pos)

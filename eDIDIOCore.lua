@@ -222,27 +222,32 @@ end
 function EDIDIO:sendAYTMessage()
     msg = createAYTMessage()
       -- Send Message
-    tcp:send(msg)
+    local success, err = tcp:send(msg)
+    return success
 end
 
-function EDIDIO:setEventFilter(input, dali_arc_level, dali_command, dali_sensor, dali_input, dmx_stream_changed, dali_24_frame, trigger_message)
-    tcp = assert(socket.tcp())
-    tcp:setoption("keepalive", true)
-    tcp:settimeout(20)
+function EDIDIO:registerEvent(input, dali_arc_level, dali_command, dali_sensor, dali_input, dmx_stream_changed, dali_24_frame, trigger_message)
     -- Connect to Host
     tcp:connect(self.ip, 23)
     msg = createEventFilterMessage(input, dali_arc_level, dali_command, dali_sensor, dali_input, dmx_stream_changed, dali_24_frame, trigger_message)
     -- Send Message
     tcp:send(msg)
-  
-    logHex(msg)
+end
+
+function EDIDIO:createEventServer(input, dali_arc_level, dali_command, dali_sensor, dali_input, dmx_stream_changed, dali_24_frame, trigger_message)
+    tcp = assert(socket.tcp())
+    tcp:setoption("keepalive", true)
+    tcp:settimeout(20)
+    self:registerEvent(input, dali_arc_level, dali_command, dali_sensor, dali_input, dmx_stream_changed, dali_24_frame, trigger_message)
+
+    log("Starting Async Server")
   
     -- Start the coroutine
-    self:startAYTCoroutine()
+    self:startAYTServer()
 end
 
 -- Function to start or restart the AYT coroutine
-function EDIDIO:startAYTCoroutine()
+function EDIDIO:startAYTServer()
     -- Check if the coroutine already exists and is running
     if self.aytCoroutine and coroutine.status(self.aytCoroutine) ~= "dead" then
         log("Stopping previous AYT coroutine")
@@ -262,22 +267,29 @@ function EDIDIO:startAYTCoroutine()
             -- Handle Reply - Check for Event Data
             if decoded_message then
                 if decoded_message.payload and decoded_message.payload.event_message then
-                    log("Event Received")
-            				--if decoded_message.payload.event_message.event_data.trigger then
-                			--log("TRIGGER Line: " .. decoded_message.payload.event_message.event_data.trigger.line_mask .. " Target Address: " .. decoded_message.payload.event_message.event_data.trigger )
-            					--log("NEW TRIG")  			
-            				--end
-            				--PrintPairs(decoded_message)
+            				if decoded_message.payload.event_message.event_data.trigger then
+              					if decoded_message.payload.event_message.event_data.trigger.payload.level then
+                             log("DALI Event - Line: " .. decoded_message.payload.event_message.event_data.trigger.line_mask .. " Target Address: " .. decoded_message.payload.event_message.event_data.trigger.target_address .. " Level: " .. decoded_message.payload.event_message.event_data.trigger.payload.level )
+                				elseif decoded_message.payload.event_message.event_data.trigger.payload.dali_command then
+                             log("DALI Event - Line: " .. decoded_message.payload.event_message.event_data.trigger.line_mask .. " Target Address: " .. decoded_message.payload.event_message.event_data.trigger.target_address .. " Command: " .. decoded_message.payload.event_message.event_data.trigger.payload.dali_command )
+              					end
+            				end
             		else
-            				log("Something else Received")
+            				log("AYT or unknown Response")
                 end
             end
 
             -- Check if 10 seconds have passed to send AYT
             if os.difftime(os.time(), last_ayt_time) >= ayt_interval then
-                self:sendAYTMessage()    -- Send the AYT message
+                success = self:sendAYTMessage()    -- Send the AYT message
                 log("AYT message sent")
                 last_ayt_time = os.time() -- Reset the last AYT time
+            end
+        
+        		-- Check and handle disconnect etc
+            if not success then
+          		-- Reconnect
+              -- Register again (Save filter message)
             end
         end
 
