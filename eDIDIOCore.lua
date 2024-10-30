@@ -9,6 +9,8 @@ EDIDIO.__index = EDIDIO
 function EDIDIO.new(edidio)
   local instance = setmetatable({}, EDIDIO)
   instance.ip = edidio.ip
+  instance.stopAYT = false
+  instance.aytCoroutine = nil
   return instance
 end
 
@@ -20,7 +22,6 @@ end
 
 -- This Function as a basic protocol buffer - Uses Override type for sensors
 function createDALIArcLevel(line, address, level) -- DALI Arc Override Command
-    -- TODO override flag
     local edidio_message = {
         message_id = GetMessageID(),
         payload = {
@@ -182,30 +183,26 @@ function createETMessage(line, zone, type, target, value, query)
     return Wrap_message(encoded_message)
 end
 
-function create_event_filter(input, dali_arc_level, dali_command, dali_sensor, dali_input, dmx_stream_changed, dali_24_frame, trigger_message)
-    local event_filter = {
-        input = input or false,                       		-- eDIDIO physical inputs
-        dali_arc_level = dali_arc_level or false,    			-- 16-bit DALI Arc Level Commands
-        dali_command = dali_command or false,       			-- 16-bit DALI Commands
-        dali_sensor = dali_sensor or false,         			-- DALI Sensors (24-bit and 25-bit)
-        dali_input = dali_input or false,           			-- 24-bit DALI Inputs
-        dmx_stream_changed = dmx_stream_changed or false, -- DMX output stream changes
-        dali_24_frame = dali_24_frame or false,     			-- Raw 24-bit DALI frames
-        trigger_message = trigger_message or false, 			-- High Level Trigger from Input/List/Sensor/Schedule
-    }
-    return filter
-end
-
-
 -- Function to create an eventFilterMessage. This will register the eDIDIO to receive events
 function createEventFilterMessage(input, dali_arc_level, dali_command, dali_sensor, dali_input, dmx_stream_changed, dali_24_frame, trigger_message)
     local edidio_message = {
         message_id = GetMessageID(),
         payload = {
-            event = {
+            event_message = {
                 event = REGISTER,
-                filter = create_event_filter(input, dali_arc_level, dali_command, dali_sensor, dali_input, dmx_stream_changed, dali_24_frame, trigger_message), -- Set the EventFilter
-            },
+                event_data = {
+          				filter = {
+                        input = input,
+                        dali_arc_level = dali_arc_level,   
+                        dali_command = dali_command,
+                        dali_sensor = dali_sensor,      
+                        dali_input = dali_input,      
+                        dmx_stream_changed = dmx_stream_changed,
+                        dali_24_frame = dali_24_frame,  
+                        trigger_message = trigger_message 
+                    }
+        				},    
+        		},
         },
     }
 
@@ -215,35 +212,14 @@ function createEventFilterMessage(input, dali_arc_level, dali_command, dali_sens
     -- Wrap the encoded message with the required format
     return Wrap_message(encoded_message)
 end
-
 
 -- Function to create an AYT Message
 local function createAYTMessage()
-    local edidio_message = {
-        message_id = GetMessageID(),
-        payload = {
-            ayt_message = {
-                timesinceboot = 0,  				-- Device uptime in seconds (example)
-                temperature = 0,  					-- Example temperature value
-                time = {
-                    date = 0,            		-- Use the correctly formatted date
-                    time = 0             		-- Use the correctly formatted time
-                },
-            },
-        },
-    }
-
-    -- Encode the EdidioMessage
-    local encoded_message = Encode_edidio_message(edidio_message)
-
-    -- Wrap the encoded message with the required format
-    return Wrap_message(encoded_message)
+    return "\xCD\x00\x05\xD2\x02\x02\x1A\x00"
 end
 
+-- Assumes Connection has already been made
 function EDIDIO:sendAYTMessage()
-    tcp = assert(socket.tcp())
-    -- Connect to Host
-    tcp:connect(self.ip, 23)
     msg = createAYTMessage()
       -- Send Message
     tcp:send(msg)
@@ -251,38 +227,73 @@ end
 
 function EDIDIO:setEventFilter(input, dali_arc_level, dali_command, dali_sensor, dali_input, dmx_stream_changed, dali_24_frame, trigger_message)
     tcp = assert(socket.tcp())
+    tcp:setoption("keepalive", true)
+    tcp:settimeout(20)
     -- Connect to Host
     tcp:connect(self.ip, 23)
     msg = createEventFilterMessage(input, dali_arc_level, dali_command, dali_sensor, dali_input, dmx_stream_changed, dali_24_frame, trigger_message)
     -- Send Message
     tcp:send(msg)
   
-    -- Create a coroutine for sending AYT messages
+    logHex(msg)
+  
+    -- Start the coroutine
+    self:startAYTCoroutine()
+end
+
+-- Function to start or restart the AYT coroutine
+function EDIDIO:startAYTCoroutine()
+    -- Check if the coroutine already exists and is running
+    if self.aytCoroutine and coroutine.status(self.aytCoroutine) ~= "dead" then
+        log("Stopping previous AYT coroutine")
+        self.stopAYT = true   -- Set flag to stop the existing coroutine
+        coroutine.resume(self.aytCoroutine)  -- Resume to let it exit gracefully
+    end
+
+    -- Create a new coroutine for handling network messages and sending AYT periodically
+    self.stopAYT = false
     self.aytCoroutine = coroutine.create(function()
-        while true do
-            --self:sendAYTMessage()
-            --log("AYT message sent")
+        local ayt_interval = 10          -- AYT interval in seconds
+        local last_ayt_time = os.time()  -- Track the last time AYT was sent
 
-            -- Get Response
-            local decoded_message = getReply(tcp)
-
-            tcp:close()
-
-            -- Handle Reply - Looking for Success
+        while not self.stopAYT do
+            -- Get Response from the network
+            local decoded_message = getReply(tcp)  -- Blocking receive
+            -- Handle Reply - Check for Event Data
             if decoded_message then
-              --if decoded_message.payload.event_data then
-                --if decoded_message.payload.ack.ack_id == SUCCESS then
-                    log("Event Received") 
-                --end
-              --end
-            end 
-        
-            sleep(3) -- Wait for the specified interval
+                if decoded_message.payload and decoded_message.payload.event_message then
+                    log("Event Received")
+            				--if decoded_message.payload.event_message.event_data.trigger then
+                			--log("TRIGGER Line: " .. decoded_message.payload.event_message.event_data.trigger.line_mask .. " Target Address: " .. decoded_message.payload.event_message.event_data.trigger )
+            					--log("NEW TRIG")  			
+            				--end
+            				--PrintPairs(decoded_message)
+            		else
+            				log("Something else Received")
+                end
+            end
+
+            -- Check if 10 seconds have passed to send AYT
+            if os.difftime(os.time(), last_ayt_time) >= ayt_interval then
+                self:sendAYTMessage()    -- Send the AYT message
+                log("AYT message sent")
+                last_ayt_time = os.time() -- Reset the last AYT time
+            end
         end
+
+        log("AYT coroutine stopped") -- Confirmation that coroutine has ended
     end)
 
     -- Start the coroutine
     coroutine.resume(self.aytCoroutine)
+end
+
+-- Function to stop the AYT coroutine
+function EDIDIO:stopAYTCoroutine()
+    if self.aytCoroutine and coroutine.status(self.aytCoroutine) ~= "dead" then
+        self.stopAYT = true   -- Set flag to stop the coroutine
+        coroutine.resume(self.aytCoroutine)  -- Resume to allow it to exit
+    end
 end
 
 function EDIDIO:sendDALIRGBMessage(line, address, red, green, blue)
@@ -529,9 +540,11 @@ function getReply(tcp)
     local body, err, partial = tcp:receive(length)
 
     if not body then
-        log("Failed to receive the full message:", err)
+        --log("Failed to receive the full message:", err)
         return nil
     end
+  
+    --logHex(body)
 
     --log("Received body:", body)
 
@@ -643,4 +656,12 @@ function RGBToXY(R, G, B)
     y = 65536 * (Y / (X + Y + Z))
 
     return x, y
+end
+
+function logHex(data)
+    local hex = ""
+    for i = 1, #data do
+        hex = hex .. string.format("%02X ", data:byte(i))
+    end
+    log("Hex data:", hex)
 end

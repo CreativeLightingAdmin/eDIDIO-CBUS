@@ -361,29 +361,45 @@ end
 local function encode_event_filter(event_filter)
     local encoded_message = {}
 
-    -- Encode the filter for specific event types
-    if event_filter.event_types then
-        for _, event_type in ipairs(event_filter.event_types) do
-            -- Assuming EventType is an enum starting from 0
-            table.insert(encoded_message, string.char(0x0A)) -- field number for event_types, wire type 2 (length-delimited)
-            table.insert(encoded_message, encode_varint(event_type)) -- Encode the event_type as a varint
-        end
+    -- Encode boolean fields
+    if event_filter.input ~= nil then
+        table.insert(encoded_message, string.char(0x08)) -- field number for input, wire type 0 (varint)
+        table.insert(encoded_message, encode_varint(event_filter.input and 1 or 0)) -- Encode as 1 for true, 0 for false
     end
 
-    -- Encode the filter for specific input states
-    if event_filter.input_states then
-        for _, input_state in ipairs(event_filter.input_states) do
-            table.insert(encoded_message, string.char(0x12)) -- field number for input_states, wire type 2 (length-delimited)
-            table.insert(encoded_message, encode_varint(input_state)) -- Encode the input_state as a varint
-        end
+    if event_filter.dali_arc_level ~= nil then
+        table.insert(encoded_message, string.char(0x10)) -- field number for dali_arc_level, wire type 0 (varint)
+        table.insert(encoded_message, encode_varint(event_filter.dali_arc_level and 1 or 0)) -- Encode as 1 for true, 0 for false
     end
 
-    -- Encode additional filters if necessary (e.g., DALI input states, room filters, etc.)
-    if event_filter.dali_input_states then
-        for _, dali_input_state in ipairs(event_filter.dali_input_states) do
-            table.insert(encoded_message, string.char(0x1A)) -- field number for dali_input_states, wire type 2 (length-delimited)
-            table.insert(encoded_message, encode_varint(dali_input_state)) -- Encode the DALI input state as a varint
-        end
+    if event_filter.dali_command ~= nil then
+        table.insert(encoded_message, string.char(0x18)) -- field number for dali_command, wire type 0 (varint)
+        table.insert(encoded_message, encode_varint(event_filter.dali_command and 1 or 0)) -- Encode as 1 for true, 0 for false
+    end
+
+    if event_filter.dali_sensor ~= nil then
+        table.insert(encoded_message, string.char(0x20)) -- field number for dali_sensor, wire type 0 (varint)
+        table.insert(encoded_message, encode_varint(event_filter.dali_sensor and 1 or 0)) -- Encode as 1 for true, 0 for false
+    end
+
+    if event_filter.dali_input ~= nil then
+        table.insert(encoded_message, string.char(0x28)) -- field number for dali_input, wire type 0 (varint)
+        table.insert(encoded_message, encode_varint(event_filter.dali_input and 1 or 0)) -- Encode as 1 for true, 0 for false
+    end
+
+    if event_filter.dmx_stream_changed ~= nil then
+        table.insert(encoded_message, string.char(0x30)) -- field number for dmx_stream_changed, wire type 0 (varint)
+        table.insert(encoded_message, encode_varint(event_filter.dmx_stream_changed and 1 or 0)) -- Encode as 1 for true, 0 for false
+    end
+
+    if event_filter.dali_24_frame ~= nil then
+        table.insert(encoded_message, string.char(0x38)) -- field number for dali_24_frame, wire type 0 (varint)
+        table.insert(encoded_message, encode_varint(event_filter.dali_24_frame and 1 or 0)) -- Encode as 1 for true, 0 for false
+    end
+
+    if event_filter.trigger_message ~= nil then
+        table.insert(encoded_message, string.char(0x40)) -- field number for trigger_message, wire type 0 (varint)
+        table.insert(encoded_message, encode_varint(event_filter.trigger_message and 1 or 0)) -- Encode as 1 for true, 0 for false
     end
 
     -- Return the concatenated encoded message
@@ -451,42 +467,6 @@ local function encode_event_message(event_message)
     return table.concat(encoded_message)
 end
 
--- Function to encode TimeClockMessage
-local function encode_time_clock_message(time_clock_message)
-    local data = {}
-
-    -- Encode date
-    table.insert(data, encode_varint(1))  -- Field number for date
-    table.insert(data, encode_varint(time_clock_message.date)) -- Packed date value
-
-    -- Encode time
-    table.insert(data, encode_varint(2))  -- Field number for time
-    table.insert(data, encode_varint(time_clock_message.time)) -- Packed time value
-
-    return table.concat(data)
-end
-
--- Function to encode AytMessage
-local function encode_ayt_message(ayt_message)
-    local data = {}
-
-    -- Encode timesinceboot
-    table.insert(data, encode_varint(1))  -- Field number for timesinceboot
-    table.insert(data, encode_varint(ayt_message.timesinceboot))
-
-    -- Encode temperature
-    table.insert(data, encode_varint(2))  -- Field number for temperature
-    table.insert(data, float_encode(ayt_message.temperature))  -- Assuming float_encode returns a string
-
-    -- Encode TimeClockMessage
-    local encoded_time_clock = encode_time_clock_message(ayt_message.time)
-    table.insert(data, encode_varint(3))  -- Field number for time
-    table.insert(data, encode_varint(#encoded_time_clock))  -- Length of the TimeClockMessage
-    table.insert(data, encoded_time_clock)  -- Add the encoded TimeClockMessage
-
-    return table.concat(data)  -- Combine all encoded parts into a single string
-end
-
 
 -- Function to encode the EdidioMessage
 function Encode_edidio_message(edidio_message)
@@ -522,13 +502,9 @@ function Encode_edidio_message(edidio_message)
             local encoded_trigger = encode_external_trigger_message(edidio_message.payload.external_trigger)
             table.insert(encoded_message, encode_length_delimited(encoded_trigger))
         elseif edidio_message.payload.event_message then
-            table.insert(encoded_message, string.char(0xD2, 0x02))  -- field number 34, wire type 2 (length-delimited)
+            table.insert(encoded_message, string.char(0x92, 0x02))  -- field number 34, wire type 2 (length-delimited)
             local encoded_event = encode_event_message(edidio_message.payload.event_message)
             table.insert(encoded_message, encode_length_delimited(encoded_event))        
-        elseif edidio_message.payload.ayt_message then
-            table.insert(encoded_message, string.char(0xB2, 0x01)) -- field number 42, wire type 2 (length-delimited)
-            local encoded_ayt = encode_ayt_message(edidio_message.payload.ayt_message)
-            table.insert(encoded_message, encode_length_delimited(encoded_ayt))
         end
     end
 
@@ -928,16 +904,32 @@ local function decode_trigger_event(data)
         local field_number, wire_type, new_pos = decode_field_key(data, pos)
         pos = new_pos
 
-        if field_number == 1 and wire_type == 0 then -- trigger_type (uint32 or enum)
-            trigger_event.trigger_type, pos = varint_decode(data, pos)
+        if field_number == 1 and wire_type == 0 then -- TriggerType (varint)
+            trigger_event.type, pos = varint_decode(data, pos)
 
-        elseif field_number == 2 and wire_type == 0 then -- trigger_id (uint32)
-            trigger_event.trigger_id, pos = varint_decode(data, pos)
+        elseif field_number == 2 and wire_type == 0 then -- level (varint, oneof)
+            trigger_event.payload = {level = varint_decode(data, pos)}
 
-        elseif field_number == 3 and wire_type == 2 then -- payload (length-delimited, if applicable)
-            local payload_data
-            payload_data, pos = decode_length_delimited(data, pos)
-            trigger_event.payload = decode_payload_message(payload_data)
+        elseif field_number == 3 and wire_type == 0 then -- dali_command (varint, oneof)
+            trigger_event.payload = {dali_command = varint_decode(data, pos)}
+
+        elseif field_number == 4 and wire_type == 0 then -- target_address (varint)
+            trigger_event.target_address, pos = varint_decode(data, pos)
+
+        elseif field_number == 5 and wire_type == 0 then -- line_mask (varint)
+            trigger_event.line_mask, pos = varint_decode(data, pos)
+
+        elseif field_number == 6 and wire_type == 0 then -- zone (varint)
+            trigger_event.zone, pos = varint_decode(data, pos)
+
+        elseif field_number == 7 and wire_type == 0 then -- value (varint)
+            trigger_event.value, pos = varint_decode(data, pos)
+
+        elseif field_number == 8 and wire_type == 0 then -- query_index (varint)
+            trigger_event.query_index, pos = varint_decode(data, pos)
+
+        elseif field_number == 9 and wire_type == 0 then -- source (varint)
+            trigger_event.source, pos = varint_decode(data, pos)
 
         else
             -- Skip unknown fields
@@ -1136,7 +1128,7 @@ local function decode_event_message(data)
     while pos <= #data do
         local field_number, wire_type, new_pos = decode_field_key(data, pos)
         pos = new_pos
-
+    
         if field_number == 1 and wire_type == 0 then -- event (EventType)
             event_message.event, pos = varint_decode(data, pos)
 
@@ -1144,7 +1136,7 @@ local function decode_event_message(data)
             local message_data
             message_data, pos = decode_length_delimited(data, pos)
             event_message.event_data = {trigger = decode_trigger_event(message_data)}
-
+				
         elseif field_number == 3 and wire_type == 2 then -- InputStateResponse (length-delimited)
             local message_data
             message_data, pos = decode_length_delimited(data, pos)
@@ -1184,7 +1176,7 @@ local function decode_event_message(data)
                 length, pos = varint_decode(data, pos)
                 pos = pos + length
             else
-                error("Unsupported wire type: " .. wire_type)
+                log("Unsupported wire type: " .. wire_type)
             end
         end
     end
@@ -1200,7 +1192,7 @@ function Decode_edidio_message(data)
     while pos <= #data do
         local field_number, wire_type, new_pos = decode_field_key(data, pos)
         pos = new_pos
-
+    
         if field_number == 1 and wire_type == 0 then -- message_id (uint32)
             edidio_message.message_id, pos = varint_decode(data, pos)
         elseif field_number == 2 and wire_type == 2 then -- AckMessage (length-delimited)
@@ -1223,7 +1215,7 @@ function Decode_edidio_message(data)
             local message_data
             message_data, pos = decode_length_delimited(data, pos)
             edidio_message.payload = {external_trigger = decode_external_trigger_message(message_data)}
-        elseif field_number == 22 and wire_type == 2 then -- EventMessage (length-delimited)
+        elseif field_number == 34 and wire_type == 2 then -- EventMessage (length-delimited)
             local message_data
             message_data, pos = decode_length_delimited(data, pos)
             edidio_message.payload = {event_message = decode_event_message(message_data)}
@@ -1236,7 +1228,7 @@ function Decode_edidio_message(data)
                 length, pos = varint_decode(data, pos)
                 pos = pos + length
             else
-                error("Unsupported wire type: " .. wire_type)
+                log("Unsupported wire type: " .. wire_type)
             end
         end
     end
@@ -1279,7 +1271,7 @@ end
 -- TOOLS
 function PrintPairs(decoded_message)
     for k, v in pairs(decoded_message) do
-        print(k, v)
+        log("KEY " .. k .. " PAIR " .. v)
     end
 end
 
