@@ -31,3 +31,40 @@ eDIDIOS10_2:sendTrigger(LINE_1, 0, DALI_ARC_OVERRIDE, DALI_1, 200, 0)
 -- Send DALI Arc level with sensor override to DALI_1, level 200, line 1
 
 
+
+-- Working Sequence Start Below
+local eDIDIOS10_3 = EDIDIO.new(eDIDIOS10_3)
+--if (value1 ~= 0) then
+--    eDIDIOS10_3:sendTrigger(0, 0, SPEKTRA_START_SEQ, 0, 0, 0) -- line, zone, type, target, value, query
+--else
+--    eDIDIOS10_3:sendTrigger(0, 0, SPEKTRA_STOP_SEQ, 0, 0, 0) -- line, zone, type, target, value, query
+--end
+
+
+-- Example DMX Sequence
+local red = {255, 0, 0, 0}
+local orange = {255, 127, 0, 0}
+local yellow = {127, 255, 0, 0}
+local blue = {0, 0, 255, 0}
+local purple = {255, 0, 127, 0}
+local green = {0, 255, 0, 0}
+local white = {255, 255, 255, 0}
+local off = {0, 0, 0, 0}
+
+
+eDIDIOS10_3:sendDMXLevels(1, 1, red, 100, 2) -- line, channel, level, fadetime (100 = 1s, 1000 = 10s) , rpt
+sleep(1)
+eDIDIOS10_3:sendDMXLevels(1, 1, orange, 100, 2) -- line, channel, level, fadetime (100 = 1s, 1000 = 10s) , rpt
+sleep(1)
+eDIDIOS10_3:sendDMXLevels(1, 1, yellow, 100, 2) -- line, channel, level, fadetime (100 = 1s, 1000 = 10s) , rpt
+sleep(1)
+eDIDIOS10_3:sendDMXLevels(1, 1, blue, 100, 2) -- line, channel, level, fadetime (100 = 1s, 1000 = 10s) , rpt
+sleep(1)
+eDIDIOS10_3:sendDMXLevels(1, 1, purple, 100, 2) -- line, channel, level, fadetime (100 = 1s, 1000 = 10s) , rpt
+sleep(1)
+eDIDIOS10_3:sendDMXLevels(1, 1, green, 100, 2) -- line, channel, level, fadetime (100 = 1s, 1000 = 10s) , rpt
+sleep(1)
+eDIDIOS10_3:sendDMXLevels(1, 1, white, 100, 2) -- line, channel, level, fadetime (100 = 1s, 1000 = 10s) , rpt
+sleep(1)
+eDIDIOS10_3:sendDMXLevels(1, 1, off, 100, 2) -- line, channel, level, fadetime (100 = 1s, 1000 = 10s) , rpt
+

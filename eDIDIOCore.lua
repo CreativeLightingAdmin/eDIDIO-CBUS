@@ -474,6 +474,7 @@ function EDIDIO:sendDMXLevels(line, channel, level, fadetime, rpt)
     msg = createDMXMessage(line, channel, level, fadetime, rpt)
     -- Send Message
     tcp:send(msg)
+    tcp:close()
 end
 
 function EDIDIO:sendDMXRGBW(line, channel, red, green, blue, white, fadetime, rpt)
