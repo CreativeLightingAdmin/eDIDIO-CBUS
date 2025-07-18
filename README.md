@@ -54,7 +54,7 @@ The library provides a variety of Lua functions to control DALI and DMX devices 
 - **DALI functions** include addressing, group control, scene control, and querying
 - **Enumerations** are provided to simplify writing commands
 
-> For a full list of functions and enums, refer to the [Function Reference](#) _(link or section to be added)_.
+> For a full list of functions and enums, refer to the included PDF.
 
 ---
 
